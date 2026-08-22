@@ -79,6 +79,32 @@ export function authenticateToken(
   next();
 }
 
+// Middleware: Optional JWT Token (attaches user if present, does not block if absent)
+export function optionalAuth(
+  req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction
+): void {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const payload = verifyToken(token);
+    if (payload) {
+      const user = dbRepo.findUserById(payload.id);
+      if (user) {
+        req.user = {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          created_at: user.created_at,
+        };
+      }
+    }
+  }
+  next();
+}
+
 // Middleware: Admin Guard
 export function requireAdmin(
   req: AuthenticatedRequest,

@@ -7,6 +7,7 @@ import {
   comparePassword,
   generateToken,
   authenticateToken,
+  optionalAuth,
   requireAdmin,
   AuthenticatedRequest,
 } from './auth';
@@ -27,11 +28,18 @@ export function createExpressApp(): express.Express {
     })
   );
 
-  // Path normalizer middleware for Vercel Serverless Function rewrites
+  // Path normalizer middleware for Vercel Serverless Function rewrites & proxy routing
   app.use((req, _res, next) => {
-    // If request arrived at /api/index with query or headers
-    if (req.url.startsWith('/api/')) {
-      // already starts with /api/
+    const matchedPath = (req.headers['x-matched-path'] || req.headers['x-now-route-matches']) as string | undefined;
+    const originalUrl = req.originalUrl || req.url;
+
+    if (matchedPath && matchedPath.startsWith('/api')) {
+      req.url = matchedPath;
+    } else if (req.query?.slug) {
+      const slug = Array.isArray(req.query.slug) ? req.query.slug.join('/') : req.query.slug;
+      req.url = `/api/${slug}`;
+    } else if ((req.url === '/' || req.url === '/api' || req.url === '/api/') && originalUrl && originalUrl.startsWith('/api')) {
+      req.url = originalUrl;
     }
     next();
   });
@@ -562,7 +570,7 @@ export function createExpressApp(): express.Express {
   };
 
   // POST /api/payments/stk-push & /api/checkout/process-push
-  router.post(['/payments/stk-push', '/api/payments/stk-push', '/checkout/process-push', '/api/checkout/process-push'], authenticateToken, async (req: AuthenticatedRequest, res) => {
+  router.post(['/payments/stk-push', '/api/payments/stk-push', '/checkout/process-push', '/api/checkout/process-push'], optionalAuth, async (req: AuthenticatedRequest, res) => {
     try {
       const { application_id, phone_number, phone, phoneNumber } = req.body;
       const targetPhone = phone_number || phone || phoneNumber;
@@ -622,7 +630,7 @@ export function createExpressApp(): express.Express {
   });
 
   // POST /api/payments/simulate-stk-confirm
-  router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], authenticateToken, (req, res) => {
+  router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], optionalAuth, (req, res) => {
     try {
       const { application_id } = req.body;
 
