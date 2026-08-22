@@ -12,13 +12,18 @@ interface DatabaseSchema {
   testimonials?: Testimonial[];
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const DATA_DIR = isServerless ? path.join('/tmp', 'adecco_data') : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-// Helper to ensure database directory exists
+// Helper to ensure database directory exists safely
 function ensureDataDirExists() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    // In serverless read-only environments, continue in-memory
   }
 }
 
@@ -638,23 +643,31 @@ export function readDb(): DatabaseSchema {
   }
 
   ensureDataDirExists();
-  if (!fs.existsSync(DB_FILE)) {
-    const initialData = generateInitialData();
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
-    cachedDb = initialData;
-    rebuildIndexes(cachedDb);
-    return initialData;
-  }
-
   try {
+    if (!fs.existsSync(DB_FILE)) {
+      const initialData = generateInitialData();
+      try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
+      } catch (e) {
+        // Continue with in-memory database
+      }
+      cachedDb = initialData;
+      rebuildIndexes(cachedDb);
+      return initialData;
+    }
+
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     cachedDb = JSON.parse(raw) as DatabaseSchema;
     rebuildIndexes(cachedDb);
     return cachedDb;
   } catch (err) {
-    console.error('Error reading db.json, recreating initial data...', err);
+    console.error('Error reading db.json, recreating in-memory data...', err);
     const initialData = generateInitialData();
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
+    } catch (e) {
+      // Continue in-memory
+    }
     cachedDb = initialData;
     rebuildIndexes(cachedDb);
     return initialData;

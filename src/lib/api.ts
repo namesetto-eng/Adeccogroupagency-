@@ -7,7 +7,7 @@ import {
   StkPushResponse,
 } from '../types';
 
-const API_BASE = ''; // Relative path because Express serves Vite frontend
+const API_BASE = ''; // Relative path handled by Express server / Vercel API rewrite
 
 function getHeaders(): HeadersInit {
   const token = localStorage.getItem('adecco_token');
@@ -15,6 +15,25 @@ function getHeaders(): HeadersInit {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  let data: any;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    if (!res.ok) {
+      throw new Error(`Server returned HTTP ${res.status} (${res.statusText || 'Error'})`);
+    }
+    throw new Error('Invalid JSON payload returned from API');
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+  }
+
+  return data as T;
 }
 
 export const api = {
@@ -25,9 +44,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return data;
+    return handleResponse<{ message: string; user: User; token: string }>(res);
   },
 
   async login(email: string, password: string) {
@@ -36,9 +53,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
-    return data;
+    return handleResponse<{ message: string; user: User; token: string; redirect?: string }>(res);
   },
 
   async signin(email: string, password: string) {
@@ -47,17 +62,14 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Sign in failed');
-    return data;
+    return handleResponse<{ message: string; user: User; token: string; redirect?: string }>(res);
   },
 
   async getMe(): Promise<User> {
     const res = await fetch(`${API_BASE}/api/auth/me`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to fetch user');
+    const data = await handleResponse<{ user: User }>(res);
     return data.user;
   },
 
@@ -81,8 +93,7 @@ export const api = {
     if (params?.limit) query.append('limit', String(params.limit));
 
     const res = await fetch(`${API_BASE}/api/jobs?${query.toString()}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load jobs');
+    const data = await handleResponse<any>(res);
     const jobsList = Array.isArray(data.jobs) ? data.jobs : (Array.isArray(data) ? data : []);
     return {
       jobs: jobsList,
@@ -94,8 +105,7 @@ export const api = {
 
   async getJobById(id: string): Promise<Job> {
     const res = await fetch(`${API_BASE}/api/jobs/${id}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Job not found');
+    const data = await handleResponse<{ job: Job }>(res);
     return data.job;
   },
 
@@ -105,8 +115,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(jobData),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create job');
+    const data = await handleResponse<{ job: Job }>(res);
     return data.job;
   },
 
@@ -116,8 +125,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(updates),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update job');
+    const data = await handleResponse<{ job: Job }>(res);
     return data.job;
   },
 
@@ -126,8 +134,7 @@ export const api = {
       method: 'DELETE',
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to delete job');
+    await handleResponse<{ message: string }>(res);
     return true;
   },
 
@@ -144,8 +151,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(payload),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit application');
+    const data = await handleResponse<{ application: Application }>(res);
     return data.application;
   },
 
@@ -153,8 +159,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/applications/my`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load my applications');
+    const data = await handleResponse<any>(res);
     return Array.isArray(data.applications) ? data.applications : (Array.isArray(data) ? data : []);
   },
 
@@ -162,8 +167,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/applications`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load all applications');
+    const data = await handleResponse<any>(res);
     return Array.isArray(data.applications) ? data.applications : (Array.isArray(data) ? data : []);
   },
 
@@ -173,8 +177,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ status, payment_reference }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update application status');
+    const data = await handleResponse<{ application: Application }>(res);
     return data.application;
   },
 
@@ -185,9 +188,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ application_id, phone_number }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Payment request failed');
-    return data;
+    return handleResponse<StkPushResponse>(res);
   },
 
   async simulateStkConfirm(application_id: string, phone_number: string) {
@@ -196,18 +197,14 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ application_id, phone_number }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Payment simulation failed');
-    return data;
+    return handleResponse<any>(res);
   },
 
   async getPaymentStatus(applicationId: string) {
     const res = await fetch(`${API_BASE}/api/payments/status/${applicationId}`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to check status');
-    return data;
+    return handleResponse<any>(res);
   },
 
   async markPaymentTimeout(applicationId: string, reason?: string) {
@@ -216,9 +213,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ reason }),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update timeout status');
-    return data;
+    return handleResponse<any>(res);
   },
 
   // Admin
@@ -226,8 +221,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/admin/payment-settings`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load payment settings');
+    const data = await handleResponse<{ settings: PaymentSettings }>(res);
     return data.settings;
   },
 
@@ -235,9 +229,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/admin/database-indexes`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load database index metadata');
-    return data;
+    return handleResponse<any>(res);
   },
 
   async updatePaymentSettings(settings: Partial<PaymentSettings>): Promise<PaymentSettings> {
@@ -246,8 +238,7 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify(settings),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update payment settings');
+    const data = await handleResponse<{ settings: PaymentSettings }>(res);
     return data.settings;
   },
 
@@ -255,8 +246,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/api/admin/stats`, {
       headers: getHeaders(),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to load stats');
+    const data = await handleResponse<{ stats: AdminStats }>(res);
     return data.stats;
   },
 };
