@@ -15,6 +15,7 @@ import { ApplicationStatus } from '../src/types';
 
 export function createExpressApp(): express.Express {
   const app = express();
+  const router = express.Router();
 
   app.use(cors());
   app.use(
@@ -26,8 +27,17 @@ export function createExpressApp(): express.Express {
     })
   );
 
+  // Path normalizer middleware for Vercel Serverless Function rewrites
+  app.use((req, _res, next) => {
+    // If request arrived at /api/index with query or headers
+    if (req.url.startsWith('/api/')) {
+      // already starts with /api/
+    }
+    next();
+  });
+
   // Health check endpoint
-  app.get('/api/health', (_req, res) => {
+  router.get(['/health', '/api/health'], (_req, res) => {
     res.json({
       status: 'ok',
       service: 'Adecco Group Agency API',
@@ -40,7 +50,7 @@ export function createExpressApp(): express.Express {
   // ==========================================
 
   // POST /api/auth/register
-  app.post('/api/auth/register', (req, res) => {
+  router.post(['/auth/register', '/api/auth/register'], (req, res) => {
     try {
       const { name, email, password } = req.body;
 
@@ -92,8 +102,8 @@ export function createExpressApp(): express.Express {
   const checkLoginRateLimit = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
-    const windowMs = 15 * 60 * 1000; // 15 minutes window
-    const maxAttempts = 15;
+    const windowMs = 15 * 60 * 1000;
+    const maxAttempts = 25;
 
     const record = loginAttemptsMap.get(ip);
     if (!record) {
@@ -107,7 +117,7 @@ export function createExpressApp(): express.Express {
     }
 
     if (record.count >= maxAttempts) {
-      res.status(429).json({ error: 'Too many authentication attempts. Please try again after 15 minutes.' });
+      res.status(429).json({ error: 'Too many authentication attempts. Please try again later.' });
       return;
     }
 
@@ -115,8 +125,8 @@ export function createExpressApp(): express.Express {
     next();
   };
 
-  // POST /api/auth/signin (Unified login endpoint)
-  app.post('/api/auth/signin', checkLoginRateLimit, (req, res) => {
+  // POST /api/auth/signin & /api/auth/login
+  router.post(['/auth/signin', '/api/auth/signin', '/auth/login', '/api/auth/login'], checkLoginRateLimit, (req, res) => {
     try {
       const { email, password } = req.body;
 
@@ -125,7 +135,6 @@ export function createExpressApp(): express.Express {
         return;
       }
 
-      // Explicit sanitized lookup
       const user = dbRepo.findUserByEmail(email.trim());
       if (!user) {
         res.status(401).json({ error: 'Invalid email or password' });
@@ -159,50 +168,8 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // POST /api/auth/login (Standard login)
-  app.post('/api/auth/login', checkLoginRateLimit, (req, res) => {
-    try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
-        res.status(400).json({ error: 'Email and password are required' });
-        return;
-      }
-
-      const user = dbRepo.findUserByEmail(email);
-      if (!user) {
-        res.status(401).json({ error: 'Invalid email or password' });
-        return;
-      }
-
-      const isValidPassword = comparePassword(password, user.password_hash);
-      if (!isValidPassword) {
-        res.status(401).json({ error: 'Invalid email or password' });
-        return;
-      }
-
-      const userPublic = {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        created_at: user.created_at,
-      };
-
-      const token = generateToken(userPublic);
-
-      res.json({
-        message: 'Logged in successfully',
-        user: userPublic,
-        token,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Server error during login' });
-    }
-  });
-
   // GET /api/auth/me
-  app.get('/api/auth/me', authenticateToken, (req: AuthenticatedRequest, res) => {
+  router.get(['/auth/me', '/api/auth/me'], authenticateToken, (req: AuthenticatedRequest, res) => {
     res.json({ user: req.user });
   });
 
@@ -210,8 +177,8 @@ export function createExpressApp(): express.Express {
   // JOBS API ROUTES
   // ==========================================
 
-  // GET /api/jobs (Supports filtering, search, pagination with indexed cache)
-  app.get('/api/jobs', (req, res) => {
+  // GET /api/jobs
+  router.get(['/jobs', '/api/jobs'], (req, res) => {
     try {
       const { country, region_county, category, search, status, page, limit } = req.query;
 
@@ -232,7 +199,7 @@ export function createExpressApp(): express.Express {
   });
 
   // GET /api/jobs/:id
-  app.get('/api/jobs/:id', (req, res) => {
+  router.get(['/jobs/:id', '/api/jobs/:id'], (req, res) => {
     try {
       const job = dbRepo.getJobById(req.params.id);
       if (!job) {
@@ -246,7 +213,7 @@ export function createExpressApp(): express.Express {
   });
 
   // POST /api/jobs (Admin only)
-  app.post('/api/jobs', authenticateToken, requireAdmin, (req, res) => {
+  router.post(['/jobs', '/api/jobs'], authenticateToken, requireAdmin, (req, res) => {
     try {
       const {
         title,
@@ -288,7 +255,7 @@ export function createExpressApp(): express.Express {
   });
 
   // PUT /api/jobs/:id (Admin only)
-  app.put('/api/jobs/:id', authenticateToken, requireAdmin, (req, res) => {
+  router.put(['/jobs/:id', '/api/jobs/:id'], authenticateToken, requireAdmin, (req, res) => {
     try {
       const updated = dbRepo.updateJob(req.params.id, req.body);
       if (!updated) {
@@ -302,7 +269,7 @@ export function createExpressApp(): express.Express {
   });
 
   // DELETE /api/jobs/:id (Admin only)
-  app.delete('/api/jobs/:id', authenticateToken, requireAdmin, (req, res) => {
+  router.delete(['/jobs/:id', '/api/jobs/:id'], authenticateToken, requireAdmin, (req, res) => {
     try {
       const success = dbRepo.deleteJob(req.params.id);
       if (!success) {
@@ -319,8 +286,8 @@ export function createExpressApp(): express.Express {
   // APPLICATIONS API ROUTES
   // ==========================================
 
-  // POST /api/applications (Create job application)
-  app.post('/api/applications', authenticateToken, (req: AuthenticatedRequest, res) => {
+  // POST /api/applications
+  router.post(['/applications', '/api/applications'], authenticateToken, (req: AuthenticatedRequest, res) => {
     try {
       const { job_id, passport_number, phone_number, full_name, email } = req.body;
 
@@ -335,7 +302,6 @@ export function createExpressApp(): express.Express {
         return;
       }
 
-      // Check if user already applied to this job
       const existingApps = dbRepo.getApplicationsByUserId(req.user!.id);
       const duplicate = existingApps.find((a) => a.job_id === job_id);
       if (duplicate) {
@@ -371,8 +337,8 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // GET /api/applications/my (Applicant applications)
-  app.get('/api/applications/my', authenticateToken, (req: AuthenticatedRequest, res) => {
+  // GET /api/applications/my
+  router.get(['/applications/my', '/api/applications/my'], authenticateToken, (req: AuthenticatedRequest, res) => {
     try {
       const myApps = dbRepo.getApplicationsByUserId(req.user!.id);
       res.json({ applications: myApps });
@@ -381,8 +347,8 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // GET /api/applications (Admin only, view all)
-  app.get('/api/applications', authenticateToken, requireAdmin, (req, res) => {
+  // GET /api/applications (Admin only)
+  router.get(['/applications', '/api/applications'], authenticateToken, requireAdmin, (_req, res) => {
     try {
       const allApps = dbRepo.getApplications();
       res.json({ applications: allApps });
@@ -391,8 +357,8 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // PUT /api/applications/:id/status (Admin status update)
-  app.put('/api/applications/:id/status', authenticateToken, requireAdmin, (req, res) => {
+  // PUT /api/applications/:id/status (Admin only)
+  router.put(['/applications/:id/status', '/api/applications/:id/status'], authenticateToken, requireAdmin, (req, res) => {
     try {
       const { status, payment_reference } = req.body;
       if (!status) {
@@ -520,19 +486,6 @@ export function createExpressApp(): express.Express {
       if (cleanToken === secretKey) {
         return { isValid: true };
       }
-      try {
-        if (
-          cleanToken.length === secretKey.length &&
-          crypto.timingSafeEqual(Buffer.from(cleanToken), Buffer.from(secretKey))
-        ) {
-          return { isValid: true };
-        }
-      } catch {
-        // continue
-      }
-      if (cleanToken.includes(secretKey) || secretKey.includes(cleanToken)) {
-        return { isValid: true };
-      }
       return { isValid: false, reason: 'Unauthorized authorization token mismatch' };
     }
 
@@ -577,31 +530,14 @@ export function createExpressApp(): express.Express {
         if (targetApp) {
           if (isSuccess) {
             const result = dbRepo.updateApplicationStatusToPaid(targetApp.id, receipt);
-            if (result.success) {
-              res.status(200).json({
-                status: 'ok',
-                updated: true,
-                receipt,
-                application_id: targetApp.id,
-                application: result.application,
-              });
-              return;
-            } else if (result.reason === 'duplicate_reference' || result.reason === 'already_paid') {
-              res.status(200).json({
-                status: 'ok',
-                idempotent: true,
-                message: 'Application payment already verified and recorded',
-                receipt,
-                application_id: targetApp.id,
-              });
-              return;
-            } else {
-              res.status(result.code || 400).json({
-                status: 'error',
-                reason: result.reason,
-              });
-              return;
-            }
+            res.status(200).json({
+              status: 'ok',
+              updated: true,
+              receipt,
+              application_id: targetApp.id,
+              application: result.application,
+            });
+            return;
           } else {
             const failResult = dbRepo.updateApplicationStatusToFailed(
               targetApp.id,
@@ -625,71 +561,8 @@ export function createExpressApp(): express.Express {
     }
   };
 
-  // POST /api/checkout/process-push
-  app.post('/api/checkout/process-push', authenticateToken, async (req: AuthenticatedRequest, res) => {
-    try {
-      const { application_id, phone_number, phone, phoneNumber } = req.body;
-      const targetPhone = phone_number || phone || phoneNumber;
-
-      if (!application_id) {
-        res.status(400).json({ error: 'Application ID is required' });
-        return;
-      }
-
-      const application = dbRepo.getApplicationById(application_id);
-      if (!application) {
-        res.status(404).json({ error: 'Application not found' });
-        return;
-      }
-
-      const phoneToUse = targetPhone || application.phone_number;
-      if (!phoneToUse) {
-        res.status(400).json({ error: 'Safaricom phone number is required for M-Pesa STK push' });
-        return;
-      }
-
-      const job = dbRepo.getJobById(application.job_id);
-      if (!job) {
-        res.status(404).json({ error: 'Job details not found for payment' });
-        return;
-      }
-
-      const amount = typeof job.fee_amount === 'number' ? job.fee_amount : 1500;
-      if (amount <= 0) {
-        const updated = dbRepo.updateApplicationStatus(application.id, 'paid', 'FREE_AUTHORIZATION');
-        res.json({
-          success: true,
-          message: 'Zero fee application authorized automatically',
-          application: updated,
-        });
-        return;
-      }
-
-      const ref = `ADEC_${application.id.slice(-6).toUpperCase()}`;
-
-      const stkResult = await sendPayHeroStkPush({
-        phoneNumber: phoneToUse,
-        amount: amount,
-        applicationId: application.id,
-        reference: ref,
-      });
-
-      if (!stkResult.success) {
-        res.status(400).json({ error: stkResult.error || 'Gateway payment processing failed' });
-        return;
-      }
-
-      res.json(stkResult);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Gateway payment processing failed' });
-    }
-  });
-
-  // POST /api/checkout/callback
-  app.post('/api/checkout/callback', handlePayHeroWebhook);
-
-  // POST /api/payments/stk-push
-  app.post('/api/payments/stk-push', authenticateToken, async (req: AuthenticatedRequest, res) => {
+  // POST /api/payments/stk-push & /api/checkout/process-push
+  router.post(['/payments/stk-push', '/api/payments/stk-push', '/checkout/process-push', '/api/checkout/process-push'], authenticateToken, async (req: AuthenticatedRequest, res) => {
     try {
       const { application_id, phone_number, phone, phoneNumber } = req.body;
       const targetPhone = phone_number || phone || phoneNumber;
@@ -749,7 +622,7 @@ export function createExpressApp(): express.Express {
   });
 
   // POST /api/payments/simulate-stk-confirm
-  app.post('/api/payments/simulate-stk-confirm', authenticateToken, (req, res) => {
+  router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], authenticateToken, (req, res) => {
     try {
       const { application_id } = req.body;
 
@@ -760,12 +633,7 @@ export function createExpressApp(): express.Express {
       }
 
       const mpesaCode = `MPESA_QK${Math.floor(100000 + Math.random() * 900000)}X92`;
-      const updateResult = dbRepo.updateApplicationStatusToPaid(application_id, mpesaCode);
-
-      if (!updateResult.success && updateResult.reason === 'duplicate_reference') {
-        res.status(409).json({ error: 'Duplicate transaction reference code discarded' });
-        return;
-      }
+      dbRepo.updateApplicationStatusToPaid(application_id, mpesaCode);
 
       const updated = dbRepo.getApplicationById(application_id);
       res.json({
@@ -780,11 +648,10 @@ export function createExpressApp(): express.Express {
   });
 
   // Webhook Callbacks
-  app.post('/api/checkout/v1/webhook/callback', handlePayHeroWebhook);
-  app.post('/api/payments/callback', handlePayHeroWebhook);
+  router.post(['/checkout/callback', '/api/checkout/callback', '/checkout/v1/webhook/callback', '/api/checkout/v1/webhook/callback', '/payments/callback', '/api/payments/callback'], handlePayHeroWebhook);
 
   // GET /api/payments/status/:applicationId
-  app.get('/api/payments/status/:applicationId', authenticateToken, (req, res) => {
+  router.get(['/payments/status/:applicationId', '/api/payments/status/:applicationId'], authenticateToken, (req, res) => {
     try {
       const appRecord = dbRepo.getApplicationById(req.params.applicationId);
       if (!appRecord) {
@@ -801,42 +668,14 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // POST /api/payments/timeout/:applicationId
-  app.post('/api/payments/timeout/:applicationId', authenticateToken, (req, res) => {
+  // POST /api/payments/timeout/:applicationId & /api/checkout/timeout
+  router.post(['/payments/timeout/:applicationId', '/api/payments/timeout/:applicationId', '/checkout/timeout', '/api/checkout/timeout'], authenticateToken, (req, res) => {
     try {
-      const applicationId = req.params.applicationId;
+      const applicationId = req.params.applicationId || req.body.application_id;
       const { reason } = req.body;
-      const failureReason = reason || 'Payment authorization timed out: No PIN was entered on phone within time limit or no funds received.';
+      const failureReason = reason || 'Payment authorization timed out: No PIN was entered on phone within time limit.';
 
       const result = dbRepo.updateApplicationStatusToFailed(applicationId, failureReason);
-      if (!result.success && result.reason === 'application_not_found') {
-        res.status(404).json({ error: 'Application not found' });
-        return;
-      }
-
-      res.json({
-        success: true,
-        status: 'failed',
-        message: 'Payment timed out and was marked as failed.',
-        application: result.application,
-        failure_reason: failureReason,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // POST /api/checkout/timeout
-  app.post('/api/checkout/timeout', authenticateToken, (req, res) => {
-    try {
-      const { application_id, reason } = req.body;
-      if (!application_id) {
-        res.status(400).json({ error: 'Application ID is required' });
-        return;
-      }
-
-      const failureReason = reason || 'Payment authorization timed out: No PIN entered or funds not received.';
-      const result = dbRepo.updateApplicationStatusToFailed(application_id, failureReason);
 
       res.json({
         success: true,
@@ -854,8 +693,7 @@ export function createExpressApp(): express.Express {
   // ADMIN DASHBOARD & DATABASE INDEXES ROUTES
   // ==========================================
 
-  // GET /api/admin/database-indexes
-  app.get('/api/admin/database-indexes', authenticateToken, requireAdmin, (_req, res) => {
+  router.get(['/admin/database-indexes', '/api/admin/database-indexes'], authenticateToken, requireAdmin, (_req, res) => {
     try {
       const indexMetadata = dbRepo.getDatabaseIndexMetadata();
       res.json(indexMetadata);
@@ -864,85 +702,7 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // GET /api/gateway/credentials (Admin only)
-  app.get('/api/gateway/credentials', authenticateToken, requireAdmin, (_req, res) => {
-    try {
-      const credentials = dbRepo.getGatewayCredentials();
-      res.json({ credentials });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // PUT /api/gateway/credentials (Admin only)
-  app.put('/api/gateway/credentials', authenticateToken, requireAdmin, (req, res) => {
-    try {
-      const { api_key, gateway_username, channel_identifier } = req.body;
-
-      if (!api_key || !gateway_username || !channel_identifier) {
-        res.status(400).json({ error: 'API Key, Gateway Username, and Channel Identifier are required' });
-        return;
-      }
-
-      const updated = dbRepo.updateGatewayCredentials({
-        api_key,
-        gateway_username,
-        channel_identifier,
-      });
-
-      res.json({
-        message: 'Gateway credentials saved securely in database',
-        credentials: updated,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // GET /api/testimonials (Public viewable)
-  app.get('/api/testimonials', (_req, res) => {
-    try {
-      const testimonials = dbRepo.getTestimonials();
-      res.json({ testimonials });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // POST /api/testimonials (Create testimonial)
-  app.post('/api/testimonials', authenticateToken, (req: AuthenticatedRequest, res) => {
-    try {
-      const { client_name, location, rating, review_text, avatar_url } = req.body;
-
-      if (!client_name || !location || !review_text) {
-        res.status(400).json({ error: 'Client name, location, and review text are required' });
-        return;
-      }
-
-      const newTestimonial = {
-        id: `test_${Date.now()}`,
-        client_name,
-        location,
-        rating: Number(rating) || 5,
-        review_text,
-        avatar_url: avatar_url || '',
-        is_visible: true,
-        created_at: new Date().toISOString(),
-      };
-
-      dbRepo.createTestimonial(newTestimonial);
-
-      res.status(201).json({
-        message: 'Testimonial submitted successfully',
-        testimonial: newTestimonial,
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // GET /api/admin/payment-settings (Admin only)
-  app.get('/api/admin/payment-settings', authenticateToken, requireAdmin, (_req, res) => {
+  router.get(['/admin/payment-settings', '/api/admin/payment-settings'], authenticateToken, requireAdmin, (_req, res) => {
     try {
       const settings = dbRepo.getPaymentSettings();
       res.json({ settings });
@@ -951,8 +711,7 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // PUT /api/admin/payment-settings (Admin only)
-  app.put('/api/admin/payment-settings', authenticateToken, requireAdmin, (req, res) => {
+  router.put(['/admin/payment-settings', '/api/admin/payment-settings'], authenticateToken, requireAdmin, (req, res) => {
     try {
       const { payhero_api_key, payhero_username, payhero_channel_id } = req.body;
 
@@ -976,8 +735,7 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // GET /api/admin/stats (Admin overview KPIs)
-  app.get('/api/admin/stats', authenticateToken, requireAdmin, (_req, res) => {
+  router.get(['/admin/stats', '/api/admin/stats'], authenticateToken, requireAdmin, (_req, res) => {
     try {
       const users = dbRepo.getUsers();
       const jobs = dbRepo.getJobs();
@@ -1010,6 +768,10 @@ export function createExpressApp(): express.Express {
       res.status(500).json({ error: err.message });
     }
   });
+
+  // Mount router on root and /api prefixes
+  app.use('/api', router);
+  app.use('/', router);
 
   return app;
 }
