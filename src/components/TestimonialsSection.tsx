@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Star, Quote, MapPin, CheckCircle, ChevronLeft, ChevronRight, MessageSquarePlus } from 'lucide-react';
+import { Star, Quote, MapPin, CheckCircle, MessageSquarePlus } from 'lucide-react';
 import { Testimonial } from '../types';
+import { api } from '../lib/api';
 
 interface TestimonialsSectionProps {
   onOpenAuth?: () => void;
@@ -13,7 +14,6 @@ export const TestimonialsSection: React.FC<TestimonialsSectionProps> = ({
 }) => {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [showForm, setShowForm] = useState(false);
 
   // New testimonial form state
@@ -32,26 +32,13 @@ export const TestimonialsSection: React.FC<TestimonialsSectionProps> = ({
   const fetchTestimonials = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/testimonials');
-      if (res.ok) {
-        const data = await res.json();
-        setTestimonials(data.testimonials || []);
-      }
+      const data = await api.getTestimonials();
+      setTestimonials(data.testimonials || []);
     } catch (err) {
       console.error('Failed to fetch testimonials:', err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleNext = () => {
-    if (testimonials.length === 0) return;
-    setCurrentIndex((prev) => (prev + 1) % testimonials.length);
-  };
-
-  const handlePrev = () => {
-    if (testimonials.length === 0) return;
-    setCurrentIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
   };
 
   const handleSubmitReview = async (e: React.FormEvent) => {
@@ -69,27 +56,17 @@ export const TestimonialsSection: React.FC<TestimonialsSectionProps> = ({
     setSubmitSuccess('');
 
     try {
-      const token = localStorage.getItem('adecco_auth_token');
-      const res = await fetch('/api/testimonials', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          client_name: currentUser.name,
-          location: newReview.location,
-          rating: newReview.rating,
-          review_text: newReview.review_text,
-        }),
+      await api.createTestimonial({
+        client_name: currentUser.name,
+        location: newReview.location,
+        rating: newReview.rating,
+        review_text: newReview.review_text,
       });
 
-      if (res.ok) {
-        setSubmitSuccess('Thank you! Your verified story has been published.');
-        setNewReview({ location: '', rating: 5, review_text: '' });
-        setShowForm(false);
-        fetchTestimonials();
-      }
+      setSubmitSuccess('Thank you! Your verified story has been published.');
+      setNewReview({ location: '', rating: 5, review_text: '' });
+      setShowForm(false);
+      await fetchTestimonials();
     } catch (err) {
       console.error('Failed to submit review:', err);
     } finally {

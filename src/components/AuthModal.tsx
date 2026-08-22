@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Mail, Lock, User as UserIcon, Shield, ChevronRight, AlertCircle, Sparkles, CheckCircle2 } from 'lucide-react';
+import { X, Mail, Lock, User as UserIcon, Shield, ChevronRight, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 
@@ -56,18 +56,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const fillCredentials = (type: 'admin' | 'applicant') => {
-    setTab('login');
-    if (type === 'admin') {
-      setEmail('admin@adecco.co.ke');
-      setPassword('admin123');
-    } else {
-      setEmail('applicant@adecco.co.ke');
-      setPassword('applicant123');
-    }
-    setErrorMsg(null);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
       <div 
@@ -119,30 +107,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           >
             Register
           </button>
-        </div>
-
-        {/* Demo Quick-Fill Buttons */}
-        <div className="mb-5 p-3 bg-slate-950/80 rounded-2xl border border-slate-800/80">
-          <div className="text-[11px] font-semibold text-slate-400 mb-2 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Quick Demo Accounts:
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => fillCredentials('admin')}
-              className="flex-1 py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors text-center"
-            >
-              Admin Portal
-            </button>
-            <button
-              type="button"
-              onClick={() => fillCredentials('applicant')}
-              className="flex-1 py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg border border-slate-700 transition-colors text-center"
-            >
-              Applicant Demo
-            </button>
-          </div>
         </div>
 
         {errorMsg && (

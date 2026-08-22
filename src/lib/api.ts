@@ -5,6 +5,7 @@ import {
   PaymentSettings,
   AdminStats,
   StkPushResponse,
+  Testimonial,
 } from '../types';
 import { localDb } from './localDb';
 
@@ -441,6 +442,35 @@ export const api = {
       return data.stats;
     } catch (err) {
       return localDb.getAdminStats();
+    }
+  },
+
+  // Testimonials
+  async getTestimonials(): Promise<{ testimonials: Testimonial[] }> {
+    try {
+      const data = await safeFetchJson<{ testimonials: Testimonial[] }>(`${API_BASE}/api/testimonials`);
+      if (Array.isArray(data?.testimonials) && data.testimonials.length > 0) {
+        return data;
+      }
+      return { testimonials: localDb.getTestimonials() };
+    } catch (err) {
+      return { testimonials: localDb.getTestimonials() };
+    }
+  },
+
+  async createTestimonial(testimonial: Partial<Testimonial>): Promise<Testimonial> {
+    try {
+      const data = await safeFetchJson<{ testimonial: Testimonial }>(`${API_BASE}/api/testimonials`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(testimonial),
+      });
+      if (data && data.testimonial) {
+        return data.testimonial;
+      }
+      return localDb.createTestimonial(testimonial);
+    } catch (err) {
+      return localDb.createTestimonial(testimonial);
     }
   },
 };

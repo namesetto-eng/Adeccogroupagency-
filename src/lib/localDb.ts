@@ -1,4 +1,4 @@
-import { Job, User, Application, PaymentSettings, AdminStats } from '../types';
+import { Job, User, Application, PaymentSettings, AdminStats, Testimonial } from '../types';
 import { generateCanonicalAndMassJobs } from '../data/jobData';
 
 interface LocalStore {
@@ -6,6 +6,7 @@ interface LocalStore {
   jobs: Job[];
   applications: Application[];
   paymentSettings: PaymentSettings;
+  testimonials: Testimonial[];
 }
 
 const LOCAL_STORAGE_KEY = 'adecco_app_local_store_v1';
@@ -31,6 +32,39 @@ export const defaultDemoUsers: Array<User & { password_hash?: string }> = [
   },
 ];
 
+export const defaultTestimonials: Testimonial[] = [
+  {
+    id: 'test_001',
+    client_name: 'Brian Omondi',
+    location: 'Nairobi to Vancouver, Canada',
+    rating: 5,
+    review_text: 'The travel processing blueprint was seamless. I am now working in British Columbia agriculture comfortably.',
+    avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+    is_visible: true,
+    created_at: new Date('2026-01-15T00:00:00Z').toISOString(),
+  },
+  {
+    id: 'test_002',
+    client_name: 'Faith Chepngetich',
+    location: 'Mombasa, Kenya',
+    rating: 5,
+    review_text: 'Excellent local placements. Got connected to a logistics hub within two weeks of tracking my profile.',
+    avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+    is_visible: true,
+    created_at: new Date('2026-01-20T00:00:00Z').toISOString(),
+  },
+  {
+    id: 'test_003',
+    client_name: 'David Omwamba',
+    location: 'Kisumu to London, UK',
+    rating: 5,
+    review_text: 'Transparent fee structure and constant dashboard updates. Highly recommend Adecco Group Agency.',
+    avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+    is_visible: true,
+    created_at: new Date('2026-01-28T00:00:00Z').toISOString(),
+  },
+];
+
 export const defaultPaymentSettings: PaymentSettings = {
   id: 1,
   payhero_api_key: 'ph_live_adecco_demo_key_2026',
@@ -49,6 +83,9 @@ export function getLocalStore(): LocalStore {
     if (raw) {
       const parsed = JSON.parse(raw) as LocalStore;
       if (Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
+        if (!Array.isArray(parsed.testimonials) || parsed.testimonials.length === 0) {
+          parsed.testimonials = [...defaultTestimonials];
+        }
         memoryStore = parsed;
         return memoryStore;
       }
@@ -76,6 +113,7 @@ export function getLocalStore(): LocalStore {
       },
     ],
     paymentSettings: defaultPaymentSettings,
+    testimonials: [...defaultTestimonials],
   };
 
   memoryStore = initialStore;
@@ -94,6 +132,7 @@ export function saveLocalStore(store: LocalStore) {
         jobs: store.jobs.slice(0, 500),
         applications: store.applications,
         paymentSettings: store.paymentSettings,
+        testimonials: store.testimonials || defaultTestimonials,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
     }
@@ -323,5 +362,28 @@ export const localDb = {
       approved_applications: approvedApps,
       total_revenue: totalRevenue,
     };
+  },
+
+  getTestimonials(): Testimonial[] {
+    const store = getLocalStore();
+    return (store.testimonials || defaultTestimonials).filter((t) => t.is_visible !== false);
+  },
+
+  createTestimonial(t: Partial<Testimonial>): Testimonial {
+    const store = getLocalStore();
+    const newTestimonial: Testimonial = {
+      id: `test_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      client_name: t.client_name || 'Anonymous Candidate',
+      location: t.location || 'Nairobi, Kenya',
+      rating: t.rating || 5,
+      review_text: t.review_text || '',
+      avatar_url: t.avatar_url,
+      is_visible: true,
+      created_at: new Date().toISOString(),
+    };
+    if (!store.testimonials) store.testimonials = [...defaultTestimonials];
+    store.testimonials.unshift(newTestimonial);
+    saveLocalStore(store);
+    return newTestimonial;
   },
 };

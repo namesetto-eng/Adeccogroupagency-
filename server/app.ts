@@ -769,6 +769,46 @@ export function createExpressApp(): express.Express {
     }
   });
 
+  // ==========================================
+  // TESTIMONIALS API ROUTES
+  // ==========================================
+
+  router.get(['/testimonials', '/api/testimonials'], (_req, res) => {
+    try {
+      const testimonials = dbRepo.getTestimonials();
+      res.json({ testimonials });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to fetch testimonials' });
+    }
+  });
+
+  router.post(['/testimonials', '/api/testimonials'], (req, res) => {
+    try {
+      const { client_name, location, rating, review_text, avatar_url } = req.body;
+
+      if (!client_name || !location || !review_text) {
+        res.status(400).json({ error: 'Client name, location, and review text are required' });
+        return;
+      }
+
+      const newTestimonial = {
+        id: `test_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        client_name,
+        location,
+        rating: Number(rating) || 5,
+        review_text,
+        avatar_url: avatar_url || undefined,
+        is_visible: true,
+        created_at: new Date().toISOString(),
+      };
+
+      const saved = dbRepo.createTestimonial(newTestimonial);
+      res.status(201).json({ message: 'Testimonial added successfully', testimonial: saved });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to submit testimonial' });
+    }
+  });
+
   // Mount router on root and /api prefixes
   app.use('/api', router);
   app.use('/', router);
