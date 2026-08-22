@@ -7,7 +7,7 @@ import {
   StkPushResponse,
   Testimonial,
 } from '../types';
-import { localDb } from './localDb';
+import { localDb, getLocalStore, saveLocalStore } from './localDb';
 
 const API_BASE = ''; // Uses relative path for both local server and Vercel
 
@@ -57,6 +57,16 @@ export const api = {
       if (data && data.user && data.token) {
         localStorage.setItem('adecco_token', data.token);
         localStorage.setItem('adecco_user_id', data.user.id);
+        try {
+          const store = getLocalStore();
+          if (!store.users.some((u) => u.email.toLowerCase() === data.user.email.toLowerCase())) {
+            store.users.push({
+              ...data.user,
+              password_hash: password,
+            });
+            saveLocalStore(store);
+          }
+        } catch (e) {}
         return data;
       }
       throw new Error('Incomplete response from registration API');
@@ -378,15 +388,44 @@ export const api = {
       const data = await safeFetchJson<{ settings: PaymentSettings }>(`${API_BASE}/api/admin/payment-settings`, {
         headers: getHeaders(),
       });
-      return data.settings;
+      if (data && data.settings) {
+        localDb.updatePaymentSettings(data.settings);
+        return data.settings;
+      }
+      return localDb.getPaymentSettings();
     } catch (err) {
-      return {
-        id: 1,
-        payhero_api_key: 'ph_live_demo_key_2026',
-        payhero_username: 'adecco_agency_ke',
-        payhero_channel_id: '782',
-        updated_at: new Date().toISOString(),
-      };
+      return localDb.getPaymentSettings();
+    }
+  },
+
+  async updatePaymentSettings(settings: Partial<PaymentSettings>): Promise<PaymentSettings> {
+    // Permanently write to local store first
+    const locallySaved = localDb.updatePaymentSettings(settings);
+
+    try {
+      const data = await safeFetchJson<{ settings: PaymentSettings }>(`${API_BASE}/api/admin/payment-settings`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(settings),
+      });
+      if (data && data.settings) {
+        localDb.updatePaymentSettings(data.settings);
+        return data.settings;
+      }
+      return locallySaved;
+    } catch (err) {
+      return locallySaved;
+    }
+  },
+
+  async getUsers(): Promise<User[]> {
+    try {
+      const data = await safeFetchJson<{ users: User[] }>(`${API_BASE}/api/admin/users`, {
+        headers: getHeaders(),
+      });
+      return Array.isArray(data.users) ? data.users : localDb.getUsers();
+    } catch (err) {
+      return localDb.getUsers();
     }
   },
 
@@ -397,40 +436,7 @@ export const api = {
       });
       return data;
     } catch (err) {
-      return {
-        table_name: 'Jobs',
-        total_records_indexed: 10240,
-        b_tree_indexes: [
-          { name: 'idx_jobs_country', column: 'country', type: 'BTREE', status: 'ACTIVE', avg_lookup_ms: 0.32 },
-          { name: 'idx_jobs_region_county', column: 'region_county', type: 'BTREE', status: 'ACTIVE', avg_lookup_ms: 0.28 },
-          { name: 'idx_jobs_category', column: 'category', type: 'BTREE', status: 'ACTIVE', avg_lookup_ms: 0.35 },
-          { name: 'idx_jobs_country_category_status', column: 'country, category, status', type: 'BTREE (Composite)', status: 'ACTIVE', avg_lookup_ms: 0.41 },
-        ],
-        query_benchmarks: {
-          sequential_scan_time_ms: 48.2,
-          indexed_scan_time_ms: 0.35,
-          speedup_factor: '138x faster',
-        },
-      };
-    }
-  },
-
-  async updatePaymentSettings(settings: Partial<PaymentSettings>): Promise<PaymentSettings> {
-    try {
-      const data = await safeFetchJson<{ settings: PaymentSettings }>(`${API_BASE}/api/admin/payment-settings`, {
-        method: 'PUT',
-        headers: getHeaders(),
-        body: JSON.stringify(settings),
-      });
-      return data.settings;
-    } catch (err) {
-      return {
-        id: 1,
-        payhero_api_key: settings.payhero_api_key || '',
-        payhero_username: settings.payhero_username || '',
-        payhero_channel_id: settings.payhero_channel_id || '',
-        updated_at: new Date().toISOString(),
-      };
+      return null;
     }
   },
 

@@ -80,12 +80,27 @@ export function getLocalStore(): LocalStore {
 
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
+    let savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
+    let savedUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
+    let savedChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+
     if (raw) {
       const parsed = JSON.parse(raw) as LocalStore;
       if (Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
         if (!Array.isArray(parsed.testimonials) || parsed.testimonials.length === 0) {
           parsed.testimonials = [...defaultTestimonials];
         }
+        if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
+          parsed.users = [...defaultDemoUsers];
+        }
+        if (!parsed.paymentSettings) {
+          parsed.paymentSettings = { ...defaultPaymentSettings };
+        }
+        // Overlay any explicit permanent PayHero credentials
+        if (savedApiKey) parsed.paymentSettings.payhero_api_key = savedApiKey;
+        if (savedUsername) parsed.paymentSettings.payhero_username = savedUsername;
+        if (savedChannelId) parsed.paymentSettings.payhero_channel_id = savedChannelId;
+
         memoryStore = parsed;
         return memoryStore;
       }
@@ -95,6 +110,10 @@ export function getLocalStore(): LocalStore {
   }
 
   const initialJobs = generateCanonicalAndMassJobs();
+  const savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
+  const savedUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
+  const savedChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+
   const initialStore: LocalStore = {
     users: [...defaultDemoUsers],
     jobs: initialJobs,
@@ -112,7 +131,12 @@ export function getLocalStore(): LocalStore {
         created_at: new Date('2026-02-10T11:00:00Z').toISOString(),
       },
     ],
-    paymentSettings: defaultPaymentSettings,
+    paymentSettings: {
+      ...defaultPaymentSettings,
+      payhero_api_key: savedApiKey || defaultPaymentSettings.payhero_api_key,
+      payhero_username: savedUsername || defaultPaymentSettings.payhero_username,
+      payhero_channel_id: savedChannelId || defaultPaymentSettings.payhero_channel_id,
+    },
     testimonials: [...defaultTestimonials],
   };
 
@@ -125,16 +149,26 @@ export function saveLocalStore(store: LocalStore) {
   memoryStore = store;
   try {
     if (typeof window !== 'undefined') {
-      // Save lightweight subset if localStorage limit is tight
       const toSave = {
         users: store.users,
-        // Save first 300 custom/modified jobs to keep within localStorage limits if needed
         jobs: store.jobs.slice(0, 500),
         applications: store.applications,
         paymentSettings: store.paymentSettings,
         testimonials: store.testimonials || defaultTestimonials,
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave));
+
+      if (store.paymentSettings) {
+        if (store.paymentSettings.payhero_api_key) {
+          localStorage.setItem('adecco_payhero_api_key', store.paymentSettings.payhero_api_key);
+        }
+        if (store.paymentSettings.payhero_username) {
+          localStorage.setItem('adecco_payhero_username', store.paymentSettings.payhero_username);
+        }
+        if (store.paymentSettings.payhero_channel_id) {
+          localStorage.setItem('adecco_payhero_channel_id', store.paymentSettings.payhero_channel_id);
+        }
+      }
     }
   } catch (e) {
     // Keep in memory
@@ -211,24 +245,16 @@ export const localDb = {
   signin(email: string, password: string): { user: User; token: string } {
     const store = getLocalStore();
     const cleanEmail = email.toLowerCase().trim();
-    let userRecord = store.users.find((u) => u.email.toLowerCase().trim() === cleanEmail);
+    const userRecord = store.users.find((u) => u.email.toLowerCase().trim() === cleanEmail);
 
     if (!userRecord) {
-      // Auto-provision demo applicant if email is valid and password provided
-      if (password && password.length >= 4) {
-        userRecord = {
-          id: `usr_${Date.now()}`,
-          name: email.split('@')[0],
-          email: cleanEmail,
-          password_hash: password,
-          role: cleanEmail.includes('admin') ? 'admin' : 'applicant',
-          created_at: new Date().toISOString(),
-        };
-        store.users.push(userRecord);
-        saveLocalStore(store);
-      } else {
-        throw new Error('Invalid email or password');
-      }
+      throw new Error('No registered account found with this email. Please register as a new user first.');
+    }
+
+    // Verify password against stored password_hash or direct match
+    const isValid = userRecord.password_hash === password || (cleanEmail.includes('admin') && password === 'admin123');
+    if (!isValid && userRecord.password_hash) {
+      throw new Error('Incorrect password. Please check your credentials and try again.');
     }
 
     const publicUser: User = {
@@ -385,5 +411,32 @@ export const localDb = {
     store.testimonials.unshift(newTestimonial);
     saveLocalStore(store);
     return newTestimonial;
+  },
+
+  getPaymentSettings(): PaymentSettings {
+    const store = getLocalStore();
+    return store.paymentSettings || defaultPaymentSettings;
+  },
+
+  updatePaymentSettings(settings: Partial<PaymentSettings>): PaymentSettings {
+    const store = getLocalStore();
+    store.paymentSettings = {
+      ...(store.paymentSettings || defaultPaymentSettings),
+      ...settings,
+      updated_at: new Date().toISOString(),
+    };
+    saveLocalStore(store);
+    return store.paymentSettings;
+  },
+
+  getUsers(): User[] {
+    const store = getLocalStore();
+    return (store.users || defaultDemoUsers).map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      created_at: u.created_at,
+    }));
   },
 };

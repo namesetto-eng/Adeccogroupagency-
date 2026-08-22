@@ -145,13 +145,13 @@ export function createExpressApp(): express.Express {
 
       const user = dbRepo.findUserByEmail(email.trim());
       if (!user) {
-        res.status(401).json({ error: 'Invalid email or password' });
+        res.status(401).json({ error: 'No registered account found with this email. Please register as a new user first.' });
         return;
       }
 
       const isValidPassword = comparePassword(password, user.password_hash);
       if (!isValidPassword) {
-        res.status(401).json({ error: 'Invalid email or password' });
+        res.status(401).json({ error: 'Incorrect password. Please verify your credentials and try again.' });
         return;
       }
 
@@ -738,6 +738,21 @@ export function createExpressApp(): express.Express {
         message: 'Pay Hero payment settings updated successfully in database',
         settings: updated,
       });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.get(['/admin/users', '/api/admin/users'], authenticateToken, requireAdmin, (_req, res) => {
+    try {
+      const users = dbRepo.getUsers().map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        created_at: u.created_at,
+      }));
+      res.json({ users });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
