@@ -1,0 +1,6 @@
+{
+  "name": "Adecco Group Agency",
+  "description": "International and local recruitment platform with job browsing, multi-step application, Pay Hero M-Pesa payments, and admin tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
