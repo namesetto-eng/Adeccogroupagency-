@@ -5,6 +5,9 @@ interface PayHeroStkPushPayload {
   amount: number;
   applicationId: string;
   reference: string;
+  overrideApiKey?: string;
+  overrideUsername?: string;
+  overrideChannelId?: string;
 }
 
 export function formatKenyanPhone(phone: string): string {
@@ -43,6 +46,9 @@ export async function sendPayHeroStkPush({
   amount,
   applicationId,
   reference,
+  overrideApiKey,
+  overrideUsername,
+  overrideChannelId,
 }: PayHeroStkPushPayload) {
   const envApiKey = process.env.PAYHERO_API_KEY;
   const envUsername = process.env.PAYHERO_USERNAME;
@@ -51,9 +57,9 @@ export async function sendPayHeroStkPush({
   const gatewayCreds = dbRepo.getGatewayCredentials();
   const settings = dbRepo.getPaymentSettings();
 
-  const apiKey = (envApiKey || gatewayCreds?.api_key || settings?.payhero_api_key || '').trim();
-  const username = (envUsername || gatewayCreds?.gateway_username || settings?.payhero_username || '').trim();
-  const channelId = (envChannelId || gatewayCreds?.channel_identifier || settings?.payhero_channel_id || '7741').trim();
+  const apiKey = (overrideApiKey || envApiKey || gatewayCreds?.api_key || settings?.payhero_api_key || '').trim();
+  const username = (overrideUsername || envUsername || gatewayCreds?.gateway_username || settings?.payhero_username || '').trim();
+  const channelId = (overrideChannelId || envChannelId || gatewayCreds?.channel_identifier || settings?.payhero_channel_id || '7741').trim();
 
   const formattedPhone = formatKenyanPhone(phoneNumber);
   const localPhone = getLocalKenyanPhone(phoneNumber);

@@ -12,7 +12,7 @@ import {
   AuthenticatedRequest,
 } from './auth';
 import { sendPayHeroStkPush } from './payhero';
-import { ApplicationStatus } from '../src/types';
+import { ApplicationStatus, Application } from '../src/types';
 
 export function createExpressApp(): express.Express {
   const app = express();
@@ -30,15 +30,17 @@ export function createExpressApp(): express.Express {
 
   // Path normalizer middleware for Vercel Serverless Function rewrites & proxy routing
   app.use((req, _res, next) => {
-    const matchedPath = (req.headers['x-matched-path'] || req.headers['x-now-route-matches']) as string | undefined;
+    const slug = (req.query?.slug || req.query?.path) as string | string[] | undefined;
+    const matchedPath = (req.headers['x-matched-path'] || req.headers['x-now-route-matches'] || req.headers['x-forwarded-uri'] || req.headers['x-original-uri']) as string | undefined;
     const originalUrl = req.originalUrl || req.url;
 
-    if (matchedPath && matchedPath.startsWith('/api')) {
-      req.url = matchedPath;
-    } else if (req.query?.slug) {
-      const slug = Array.isArray(req.query.slug) ? req.query.slug.join('/') : req.query.slug;
-      req.url = `/api/${slug}`;
-    } else if ((req.url === '/' || req.url === '/api' || req.url === '/api/') && originalUrl && originalUrl.startsWith('/api')) {
+    if (slug) {
+      const slugStr = Array.isArray(slug) ? slug.join('/') : slug;
+      const cleanSlug = slugStr.replace(/^\/+/, '');
+      req.url = `/api/${cleanSlug}`;
+    } else if (matchedPath && (matchedPath.startsWith('/api') || matchedPath.startsWith('/'))) {
+      req.url = matchedPath.startsWith('/api') ? matchedPath : `/api${matchedPath}`;
+    } else if (originalUrl && originalUrl.startsWith('/api') && originalUrl !== '/api' && originalUrl !== '/api/') {
       req.url = originalUrl;
     }
     next();
@@ -572,7 +574,18 @@ export function createExpressApp(): express.Express {
   // POST /api/payments/stk-push & /api/checkout/process-push
   router.post(['/payments/stk-push', '/api/payments/stk-push', '/checkout/process-push', '/api/checkout/process-push'], optionalAuth, async (req: AuthenticatedRequest, res) => {
     try {
-      const { application_id, phone_number, phone, phoneNumber } = req.body;
+      const {
+        application_id,
+        phone_number,
+        phone,
+        phoneNumber,
+        amount: directAmount,
+        fee_amount: feeAmount,
+        job_id,
+        payhero_api_key,
+        payhero_username,
+        payhero_channel_id,
+      } = req.body;
       const targetPhone = phone_number || phone || phoneNumber;
 
       if (!application_id) {
@@ -580,10 +593,22 @@ export function createExpressApp(): express.Express {
         return;
       }
 
-      const application = dbRepo.getApplicationById(application_id);
+      let application = dbRepo.getApplicationById(application_id);
       if (!application) {
-        res.status(404).json({ error: 'Application not found' });
-        return;
+        // Auto-create provisional application record so it seamlessly works across Vercel serverless cold starts & admin probes
+        const provisionalApp: Application = {
+          id: application_id,
+          job_id: job_id || 'job_001',
+          user_id: (req as any).user?.id || 'usr_candidate',
+          passport_number: req.body.passport_number || 'A00000000',
+          phone_number: targetPhone || '0700000000',
+          full_name: req.body.full_name || 'Candidate',
+          email: req.body.email || 'candidate@adecco.co.ke',
+          current_status: 'pending_payment',
+          created_at: new Date().toISOString(),
+        };
+        dbRepo.createApplication(provisionalApp);
+        application = dbRepo.getApplicationById(application_id);
       }
 
       const phoneToUse = targetPhone || application.phone_number;
@@ -593,13 +618,16 @@ export function createExpressApp(): express.Express {
       }
 
       const job = dbRepo.getJobById(application.job_id);
-      if (!job) {
-        res.status(404).json({ error: 'Job details not found for payment' });
-        return;
+      let calculatedAmount = 1500;
+      if (directAmount !== undefined && !isNaN(Number(directAmount))) {
+        calculatedAmount = Number(directAmount);
+      } else if (feeAmount !== undefined && !isNaN(Number(feeAmount))) {
+        calculatedAmount = Number(feeAmount);
+      } else if (job && typeof job.fee_amount === 'number') {
+        calculatedAmount = job.fee_amount;
       }
 
-      const amount = typeof job.fee_amount === 'number' ? job.fee_amount : 1500;
-      if (amount <= 0) {
+      if (calculatedAmount <= 0) {
         const updated = dbRepo.updateApplicationStatus(application.id, 'paid', 'FREE_AUTHORIZATION');
         res.json({
           success: true,
@@ -611,11 +639,28 @@ export function createExpressApp(): express.Express {
 
       const ref = `ADEC_${application.id.slice(-6).toUpperCase()}`;
 
+      // Extract custom credentials from request headers or body if passed
+      const overrideApiKey =
+        (req.headers['x-payhero-api-key'] as string) ||
+        (payhero_api_key as string) ||
+        undefined;
+      const overrideUsername =
+        (req.headers['x-payhero-username'] as string) ||
+        (payhero_username as string) ||
+        undefined;
+      const overrideChannelId =
+        (req.headers['x-payhero-channel-id'] as string) ||
+        (payhero_channel_id as string) ||
+        undefined;
+
       const stkResult = await sendPayHeroStkPush({
         phoneNumber: phoneToUse,
-        amount: amount,
+        amount: calculatedAmount,
         applicationId: application.id,
         reference: ref,
+        overrideApiKey,
+        overrideUsername,
+        overrideChannelId,
       });
 
       if (!stkResult.success) {
@@ -632,12 +677,23 @@ export function createExpressApp(): express.Express {
   // POST /api/payments/simulate-stk-confirm
   router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], optionalAuth, (req, res) => {
     try {
-      const { application_id } = req.body;
+      const { application_id, phone_number } = req.body;
 
-      const application = dbRepo.getApplicationById(application_id);
+      let application = dbRepo.getApplicationById(application_id);
       if (!application) {
-        res.status(404).json({ error: 'Application not found' });
-        return;
+        const provisionalApp: Application = {
+          id: application_id,
+          job_id: req.body.job_id || 'job_001',
+          user_id: (req as any).user?.id || 'usr_candidate',
+          passport_number: 'A00000000',
+          phone_number: phone_number || '0700000000',
+          full_name: 'Candidate',
+          email: 'candidate@adecco.co.ke',
+          current_status: 'pending_payment',
+          created_at: new Date().toISOString(),
+        };
+        dbRepo.createApplication(provisionalApp);
+        application = dbRepo.getApplicationById(application_id);
       }
 
       const mpesaCode = `MPESA_QK${Math.floor(100000 + Math.random() * 900000)}X92`;

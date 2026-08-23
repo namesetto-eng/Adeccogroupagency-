@@ -243,7 +243,12 @@ export const AdminDashboard: React.FC = () => {
     setTestPromptLoading(true);
     setTestPromptResult(null);
     try {
-      const res = await api.sendStkPush('app_admin_probe_' + Date.now().toString().slice(-6), testPhone.trim());
+      const res = await api.sendStkPush('app_admin_probe_' + Date.now().toString().slice(-6), testPhone.trim(), {
+        amount: 10,
+        job_id: 'job_admin_probe',
+        full_name: 'Admin Live STK Test',
+        passport_number: 'ADMIN_TEST',
+      });
       setTestPromptResult(res);
       setSuccessMsg(`M-Pesa STK Prompt initiated to ${testPhone}. Check your handset for PIN prompt.`);
     } catch (err: any) {

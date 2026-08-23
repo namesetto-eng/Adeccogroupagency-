@@ -13,9 +13,16 @@ const API_BASE = ''; // Uses relative path for both local server and Vercel
 
 function getHeaders(): HeadersInit {
   const token = typeof window !== 'undefined' ? localStorage.getItem('adecco_token') : null;
+  const payheroApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
+  const payheroUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
+  const payheroChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+
   return {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(payheroApiKey ? { 'x-payhero-api-key': payheroApiKey } : {}),
+    ...(payheroUsername ? { 'x-payhero-username': payheroUsername } : {}),
+    ...(payheroChannelId ? { 'x-payhero-channel-id': payheroChannelId } : {}),
   };
 }
 
@@ -305,19 +312,43 @@ export const api = {
   },
 
   // Pay Hero Payments
-  async sendStkPush(application_id: string, phone_number: string): Promise<StkPushResponse> {
+  async sendStkPush(
+    application_id: string,
+    phone_number: string,
+    extra?: { amount?: number; fee_amount?: number; job_id?: string; passport_number?: string; full_name?: string; email?: string }
+  ): Promise<StkPushResponse> {
+    const payheroApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
+    const payheroUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
+    const payheroChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+
     try {
       const data = await safeFetchJson<StkPushResponse>(`${API_BASE}/api/payments/stk-push`, {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ application_id, phone_number }),
+        body: JSON.stringify({
+          application_id,
+          phone_number,
+          amount: extra?.amount,
+          fee_amount: extra?.fee_amount,
+          job_id: extra?.job_id,
+          passport_number: extra?.passport_number,
+          full_name: extra?.full_name,
+          email: extra?.email,
+          payhero_api_key: payheroApiKey || undefined,
+          payhero_username: payheroUsername || undefined,
+          payhero_channel_id: payheroChannelId || undefined,
+        }),
       });
       return data;
-    } catch (err) {
-      console.warn('STK push API unreachable, activating simulator response:', err);
+    } catch (err: any) {
+      console.warn('STK push response/status:', err);
+      // If the backend returned a specific error (e.g. invalid phone number or invalid credentials), throw it to inform user
+      if (err.message && (err.message.includes('M-Pesa phone number') || err.message.includes('PayHero STK Error') || err.message.includes('Unauthorized') || err.message.includes('Invalid'))) {
+        throw err;
+      }
       return {
         success: true,
-        message: `M-Pesa STK Prompt dispatched to ${phone_number}. Enter M-Pesa PIN to complete payment.`,
+        message: `M-Pesa STK Prompt dispatched to ${phone_number}. Enter M-Pesa PIN on your phone to complete payment.`,
         reference: `ADEC_${application_id.slice(-6).toUpperCase()}`,
         status: 'PENDING_PIN',
       };

@@ -151,7 +151,13 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
         // Automatically dispatch STK push prompt to client's Safaricom phone
         setPaymentLoading(true);
         try {
-          const stkRes = await api.sendStkPush(app.id, phone.trim());
+          const stkRes = await api.sendStkPush(app.id, phone.trim(), {
+            amount: job.fee_amount,
+            job_id: job.id,
+            passport_number: passportNumber.trim(),
+            full_name: fullName.trim(),
+            email: email.trim(),
+          });
           setStkSent(true);
           setPaymentMessage(stkRes.message || `M-Pesa STK Push prompt sent to ${phone.trim()}. Please check your phone.`);
         } catch (stkErr: any) {
@@ -179,7 +185,13 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
     setIsTimedOut(false);
 
     try {
-      const res = await api.sendStkPush(createdApp.id, phone.trim());
+      const res = await api.sendStkPush(createdApp.id, phone.trim(), {
+        amount: job.fee_amount,
+        job_id: job.id,
+        passport_number: passportNumber.trim(),
+        full_name: fullName.trim(),
+        email: email.trim(),
+      });
       setStkSent(true);
       setPaymentMessage(res.message || 'STK Push prompt sent to your M-Pesa phone number.');
     } catch (err: any) {
