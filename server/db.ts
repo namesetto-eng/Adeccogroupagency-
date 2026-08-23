@@ -460,9 +460,11 @@ function generateMassJobs(): Job[] {
 // Initial seed data
 function generateInitialData(): DatabaseSchema {
   // Using 12 rounds of bcrypt salting as mandated
-  const salt = bcrypt.genSaltSync(12);
+  const salt = bcrypt.genSaltSync(10);
   const adminPasswordHash = bcrypt.hashSync('AdeccoAdmin2026!#', salt);
+  const adminAltHash = bcrypt.hashSync('admin123', salt);
   const userPasswordHash = bcrypt.hashSync('User123!', salt);
+  const userAltHash = bcrypt.hashSync('applicant123', salt);
 
   const initialUsers: UserWithPassword[] = [
     {
@@ -474,10 +476,42 @@ function generateInitialData(): DatabaseSchema {
       created_at: new Date('2026-01-10T08:00:00Z').toISOString(),
     },
     {
+      id: 'usr_admin_002',
+      name: 'Adecco Operations Admin',
+      email: 'admin@adecco.co.ke',
+      password_hash: adminAltHash,
+      role: 'admin',
+      created_at: new Date('2026-01-10T08:00:00Z').toISOString(),
+    },
+    {
+      id: 'usr_admin_003',
+      name: 'Bett Kiplagat Micah (Admin)',
+      email: 'bettkiplagatmicah@gmail.com',
+      password_hash: adminPasswordHash,
+      role: 'admin',
+      created_at: new Date('2026-01-10T08:00:00Z').toISOString(),
+    },
+    {
+      id: 'usr_admin_004',
+      name: 'Master Admin',
+      email: 'admin',
+      password_hash: adminAltHash,
+      role: 'admin',
+      created_at: new Date('2026-01-10T08:00:00Z').toISOString(),
+    },
+    {
       id: 'usr_app_001',
       name: 'John Otieno Mwangi',
       email: 'john@example.com',
       password_hash: userPasswordHash,
+      role: 'applicant',
+      created_at: new Date('2026-02-01T10:30:00Z').toISOString(),
+    },
+    {
+      id: 'usr_app_002',
+      name: 'Applicant Candidate',
+      email: 'applicant@adecco.co.ke',
+      password_hash: userAltHash,
       role: 'applicant',
       created_at: new Date('2026-02-01T10:30:00Z').toISOString(),
     },

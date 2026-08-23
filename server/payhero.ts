@@ -98,105 +98,152 @@ export async function sendPayHeroStkPush({
   }
 
   const callbackUrl = `${baseUrl.replace(/\/+$/, '')}/api/checkout/v1/webhook/callback`;
-
-  // PayHero v2 accepts phone_number as 07XXXXXXXX or 254XXXXXXXXX and channel_id as integer
   const parsedChannelId = parseInt(channelId, 10) || 7741;
-  const payheroPayload = {
-    amount: numericAmount,
-    phone_number: localPhone, // PayHero v2 standard format (07XXXXXXXX / 01XXXXXXXX)
-    channel_id: parsedChannelId,
-    provider: 'm-pesa',
-    external_reference: reference || `ADEC_${applicationId.slice(-6).toUpperCase()}`,
-    callback_url: callbackUrl,
-  };
+  const externalRef = reference || `ADEC_${applicationId.slice(-6).toUpperCase()}`;
 
   const checkoutId = `PH_STK_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-  try {
+  // Determine if this is a configured custom API key or default demo
+  const isCustomKey = apiKey && apiKey.length > 8 && !apiKey.toLowerCase().includes('demo');
+
+  if (isCustomKey) {
+    // Generate auth headers to try
     let authHeader = '';
     if (apiKey.startsWith('Basic ') || apiKey.startsWith('Bearer ')) {
       authHeader = apiKey;
     } else if (username && apiKey) {
       authHeader = 'Basic ' + Buffer.from(`${username}:${apiKey}`).toString('base64');
-    } else if (apiKey) {
+    } else if (apiKey.includes(':')) {
+      authHeader = 'Basic ' + Buffer.from(apiKey).toString('base64');
+    } else {
       authHeader = 'Basic ' + Buffer.from(`${apiKey}:`).toString('base64');
     }
 
-    console.log(`[PayHero STK Push] Sending prompt to ${localPhone} (${formattedPhone}) for KES ${numericAmount} (Ref: ${payheroPayload.external_reference}, Channel: ${parsedChannelId})...`);
+    console.log(`[PayHero STK Push] Initiating Live STK Push to ${localPhone} (${formattedPhone}) for KES ${numericAmount} on channel ${parsedChannelId}...`);
 
-    // Only dispatch to live PayHero API if an API key is present
-    if (apiKey && !apiKey.includes('DEMO') && !apiKey.includes('KEY_88329')) {
-      const response = await fetch('https://backend.payhero.co.ke/api/v2/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          ...(authHeader ? { Authorization: authHeader } : {}),
-        },
-        body: JSON.stringify(payheroPayload),
-      });
+    // We will attempt with localPhone first ('07XXXXXXXX'), and if needed try formattedPhone ('2547XXXXXXXX')
+    const phoneVariants = [localPhone, formattedPhone];
+    const endpoints = [
+      'https://backend.payhero.co.ke/api/v2/payments',
+      'https://backend.payhero.co.ke/api/v2/pushes',
+    ];
 
-      const data = await response.json().catch(() => ({}));
-      console.log('[PayHero STK Response Status]:', response.status, 'Payload:', data);
+    let lastError: any = null;
+    let lastStatus: number = 0;
 
-      if (
-        response.ok &&
-        (data.success === true ||
-          data.status === 'SUCCESS' ||
-          data.status === 'QUEUED' ||
-          data.status === 'PENDING' ||
-          data.success === 'true')
-      ) {
-        return {
-          success: true,
-          message: `M-Pesa STK Prompt sent to ${localPhone}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
-          checkout_id: data.checkout_id || data.reference || data.CheckoutRequestID || checkoutId,
-          status: 'pending',
-          phone_prompted: localPhone,
-          raw: data,
-        };
-      } else {
-        // If 401 Unauthorized or channel configuration issue
-        const errorDetail =
-          data.message ||
-          data.error ||
-          data.description ||
-          data.response?.message ||
-          (response.status === 401 ? 'Unauthorized - Invalid PayHero API Key or Username' : `HTTP Error ${response.status}`);
+    for (const phoneToTry of phoneVariants) {
+      for (const endpoint of endpoints) {
+        try {
+          const payheroPayload = {
+            amount: numericAmount,
+            phone_number: phoneToTry,
+            channel_id: parsedChannelId,
+            provider: 'm-pesa',
+            external_reference: externalRef,
+            callback_url: callbackUrl,
+          };
 
-        console.warn(`[PayHero STK Notice]: ${errorDetail}`);
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader,
+            },
+            body: JSON.stringify(payheroPayload),
+          });
 
-        // If credentials failed on live API, return clear message
-        return {
-          success: false,
-          error: `PayHero STK Error: ${errorDetail}. (Phone: ${localPhone}, Channel: ${parsedChannelId})`,
-          status: 'failed',
-          phone_prompted: localPhone,
-          raw: data,
-        };
+          lastStatus = response.status;
+          const data: any = await response.json().catch(() => ({}));
+          console.log(`[PayHero Endpoint ${endpoint}] Status: ${response.status}`, data);
+
+          if (
+            response.ok &&
+            (data.success === true ||
+              data.status === 'SUCCESS' ||
+              data.status === 'QUEUED' ||
+              data.status === 'PENDING' ||
+              data.success === 'true' ||
+              data.CheckoutRequestID ||
+              data.checkout_id ||
+              data.reference)
+          ) {
+            return {
+              success: true,
+              message: `M-Pesa STK Prompt sent to ${phoneToTry}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
+              checkout_id: data.checkout_id || data.reference || data.CheckoutRequestID || checkoutId,
+              status: 'pending',
+              phone_prompted: phoneToTry,
+              raw: data,
+            };
+          }
+
+          lastError = data;
+
+          // If 404 on endpoint, try next endpoint
+          if (response.status === 404) {
+            continue;
+          }
+
+          // If 401 Unauthorized, try alternate basic auth encoding (apiKey:username vs username:apiKey)
+          if (response.status === 401 && username && !authHeader.startsWith('Bearer ')) {
+            const altAuth = 'Basic ' + Buffer.from(`${apiKey}:${username}`).toString('base64');
+            const retryRes = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': altAuth,
+              },
+              body: JSON.stringify(payheroPayload),
+            });
+            const retryData: any = await retryRes.json().catch(() => ({}));
+            if (retryRes.ok && (retryData.success || retryData.status === 'SUCCESS' || retryData.status === 'QUEUED' || retryData.status === 'PENDING')) {
+              return {
+                success: true,
+                message: `M-Pesa STK Prompt sent to ${phoneToTry}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
+                checkout_id: retryData.checkout_id || retryData.reference || retryData.CheckoutRequestID || checkoutId,
+                status: 'pending',
+                phone_prompted: phoneToTry,
+                raw: retryData,
+              };
+            }
+          }
+        } catch (fetchErr: any) {
+          lastError = { message: fetchErr.message };
+        }
       }
-    } else {
-      // Sandbox / Preview simulated STK initiation
-      console.log(`[PayHero Sandbox Mode] Simulated STK prompt sent to ${localPhone} for KES ${numericAmount}.`);
-      return {
-        success: true,
-        message: `M-Pesa STK Prompt sent to ${localPhone}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
-        checkout_id: checkoutId,
-        status: 'pending',
-        phone_prompted: localPhone,
-        is_demo: true,
-      };
     }
-  } catch (error: any) {
-    console.error('[PayHero STK Push] Connection error:', error);
+
+    // If live call returned an error from PayHero
+    const errorDetail =
+      lastError?.message ||
+      lastError?.error ||
+      lastError?.description ||
+      lastError?.response?.message ||
+      (lastStatus === 401
+        ? 'PayHero Authorization Failed: Check your API Key, Username, and Channel ID in Payment Settings.'
+        : `PayHero returned HTTP status ${lastStatus || 'error'}`);
+
     return {
-      success: true,
-      message: `M-Pesa STK Prompt dispatched to ${localPhone}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
-      checkout_id: checkoutId,
-      status: 'pending',
+      success: false,
+      error: errorDetail,
+      status: 'failed',
       phone_prompted: localPhone,
-      is_demo: true,
+      raw: lastError,
     };
   }
+
+  // Demo / Simulation Mode when no live custom PayHero key is configured yet
+  console.log(`[PayHero Simulator Mode] STK prompt generated for ${localPhone} (KES ${numericAmount}).`);
+  return {
+    success: true,
+    message: `M-Pesa STK Prompt sent to ${localPhone}. Please enter your M-Pesa PIN on your phone to complete KES ${numericAmount.toLocaleString()}.`,
+    checkout_id: checkoutId,
+    status: 'pending',
+    phone_prompted: localPhone,
+    is_demo: true,
+  };
 }
+
 
