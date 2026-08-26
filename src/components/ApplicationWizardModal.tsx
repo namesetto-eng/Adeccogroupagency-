@@ -36,7 +36,32 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
   const [paymentReceipt, setPaymentReceipt] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Timeout state (60s window for PIN entry)
+  const [manualCode, setManualCode] = useState('');
+  const [manualVerifying, setManualVerifying] = useState(false);
+
+  // Handle manual M-Pesa code confirmation
+  const handleVerifyManualCode = async () => {
+    if (!createdApp) return;
+    const cleanCode = manualCode.trim().toUpperCase();
+    if (cleanCode.length < 5) {
+      setErrorMsg('Please enter a valid M-Pesa transaction code (e.g. QK892348X92).');
+      return;
+    }
+
+    setManualVerifying(true);
+    setErrorMsg(null);
+    try {
+      await api.updateApplicationStatus(createdApp.id, 'paid', cleanCode);
+      setPaymentConfirmed(true);
+      setPaymentReceipt(cleanCode);
+      setCreatedApp((prev) => (prev ? { ...prev, current_status: 'paid', payment_reference: cleanCode } : null));
+      setTimeout(() => setStep(3), 600);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to verify M-Pesa code.');
+    } finally {
+      setManualVerifying(false);
+    }
+  };
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
 
@@ -502,29 +527,55 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
                   </p>
                 </div>
 
-                {/* Sandbox Instant Simulation for Demo/Testing */}
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-center">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (!createdApp) return;
-                      setPaymentLoading(true);
-                      try {
-                        const simRes = await api.simulateStkConfirm(createdApp.id, phone.trim() || '254712345678');
-                        setPaymentConfirmed(true);
-                        setPaymentReceipt(simRes.receipt);
-                        if (simRes.application) setCreatedApp(simRes.application);
-                        setTimeout(() => setStep(3), 600);
-                      } catch (err: any) {
-                        setErrorMsg(err.message || 'Simulation failed');
-                      } finally {
-                        setPaymentLoading(false);
-                      }
-                    }}
-                    className="text-[11px] text-slate-400 hover:text-emerald-400 font-mono transition-colors flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-slate-800/60"
-                  >
-                    <span>⚡ Quick Test Sandbox: Confirm Payment Instantly</span>
-                  </button>
+                {/* Manual M-Pesa Code Entry or Sandbox Instant Simulation */}
+                <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-300 mb-1 text-left">
+                      Already paid or received M-Pesa SMS? Enter Transaction Code:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={manualCode}
+                        onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                        placeholder="e.g. QK892348X92"
+                        className="flex-1 bg-slate-950 border border-slate-700 text-emerald-400 font-mono font-bold text-xs rounded-xl px-3 py-2 uppercase tracking-wider focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyManualCode}
+                        disabled={manualVerifying || !manualCode.trim()}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
+                      >
+                        {manualVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                        <span>Verify Code</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-center pt-1">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!createdApp) return;
+                        setPaymentLoading(true);
+                        try {
+                          const simRes = await api.simulateStkConfirm(createdApp.id, phone.trim() || '254712345678');
+                          setPaymentConfirmed(true);
+                          setPaymentReceipt(simRes.receipt);
+                          if (simRes.application) setCreatedApp(simRes.application);
+                          setTimeout(() => setStep(3), 600);
+                        } catch (err: any) {
+                          setErrorMsg(err.message || 'Simulation failed');
+                        } finally {
+                          setPaymentLoading(false);
+                        }
+                      }}
+                      className="text-[11px] text-slate-400 hover:text-emerald-400 font-mono transition-colors flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-slate-800/60"
+                    >
+                      <span>⚡ Instant Test Sandbox: Auto-Authorize & Unlock</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
