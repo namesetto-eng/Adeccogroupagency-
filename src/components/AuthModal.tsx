@@ -185,9 +185,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </>
             )}
           </button>
-
         </form>
 
+        {/* Quick Demo Credentials */}
+        <div className="mt-6 pt-5 border-t border-slate-800">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-3">
+            Quick 1-Click Access
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTab('login');
+                setEmail('admin@adecco.co.ke');
+                setPassword('AdeccoAdmin2026!#');
+                setErrorMsg(null);
+              }}
+              className="p-2.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-red-400 group-hover:text-red-300">Admin Portal</span>
+                <Shield className="w-3.5 h-3.5 text-red-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5 truncate">admin@adecco.co.ke</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTab('login');
+                setEmail('applicant@adecco.co.ke');
+                setPassword('applicant123');
+                setErrorMsg(null);
+              }}
+              className="p-2.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300">Applicant</span>
+                <UserIcon className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5 truncate">applicant@adecco.co.ke</p>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

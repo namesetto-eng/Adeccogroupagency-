@@ -88,7 +88,7 @@ export function createExpressApp(): express.Express {
         name,
         email: normalizedEmail,
         password_hash: hashPassword(password),
-        role: (isAdminEmail ? 'admin' : 'applicant') as const,
+        role: (isAdminEmail ? 'admin' : 'applicant') as 'admin' | 'applicant',
         created_at: new Date().toISOString(),
       };
 
