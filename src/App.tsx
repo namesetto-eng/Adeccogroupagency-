@@ -132,8 +132,13 @@ function MainApp() {
     }
   };
 
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+    user?.email?.toLowerCase().includes('admin');
+
   const handleAuthSuccess = (role: 'applicant' | 'admin') => {
-    if (role === 'admin') {
+    if (role === 'admin' || user?.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com') {
       setCurrentView('admin');
     } else {
       setCurrentView('jobs');
@@ -157,7 +162,7 @@ function MainApp() {
       <main className="flex-grow">
         
         {currentView === 'admin' ? (
-          user?.role === 'admin' ? (
+          isAdmin ? (
             <AdminDashboard />
           ) : (
             <div className="max-w-md mx-auto my-20 p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl text-center space-y-4 shadow-xl">

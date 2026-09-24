@@ -36,32 +36,6 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
   const [paymentReceipt, setPaymentReceipt] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [manualCode, setManualCode] = useState('');
-  const [manualVerifying, setManualVerifying] = useState(false);
-
-  // Handle manual M-Pesa code confirmation
-  const handleVerifyManualCode = async () => {
-    if (!createdApp) return;
-    const cleanCode = manualCode.trim().toUpperCase();
-    if (cleanCode.length < 5) {
-      setErrorMsg('Please enter a valid M-Pesa transaction code (e.g. QK892348X92).');
-      return;
-    }
-
-    setManualVerifying(true);
-    setErrorMsg(null);
-    try {
-      await api.updateApplicationStatus(createdApp.id, 'paid', cleanCode);
-      setPaymentConfirmed(true);
-      setPaymentReceipt(cleanCode);
-      setCreatedApp((prev) => (prev ? { ...prev, current_status: 'paid', payment_reference: cleanCode } : null));
-      setTimeout(() => setStep(3), 600);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to verify M-Pesa code.');
-    } finally {
-      setManualVerifying(false);
-    }
-  };
   const [timeLeft, setTimeLeft] = useState(60);
   const [isTimedOut, setIsTimedOut] = useState(false);
 
@@ -116,6 +90,9 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
           }, 800);
         } else if (res.status === 'failed' || res.application?.current_status === 'failed') {
           setIsTimedOut(true);
+          if (res.failure_reason || res.application?.failure_reason) {
+            setErrorMsg(res.failure_reason || res.application?.failure_reason);
+          }
           if (res.application) {
             setCreatedApp(res.application);
           }
@@ -527,54 +504,18 @@ export const ApplicationWizardModal: React.FC<ApplicationWizardModalProps> = ({
                   </p>
                 </div>
 
-                {/* Manual M-Pesa Code Entry or Sandbox Instant Simulation */}
-                <div className="pt-3 border-t border-slate-800/80 space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-300 mb-1 text-left">
-                      Already paid or received M-Pesa SMS? Enter Transaction Code:
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={manualCode}
-                        onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                        placeholder="e.g. QK892348X92"
-                        className="flex-1 bg-slate-950 border border-slate-700 text-emerald-400 font-mono font-bold text-xs rounded-xl px-3 py-2 uppercase tracking-wider focus:outline-none focus:border-emerald-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleVerifyManualCode}
-                        disabled={manualVerifying || !manualCode.trim()}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
-                      >
-                        {manualVerifying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                        <span>Verify Code</span>
-                      </button>
+                {/* PayHero Verification Guarantee */}
+                <div className="pt-3 border-t border-slate-800/80 text-left">
+                  <div className="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-200">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>Automated PayHero Payment Security</span>
                     </div>
-                  </div>
-
-                  <div className="flex items-center justify-center pt-1">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (!createdApp) return;
-                        setPaymentLoading(true);
-                        try {
-                          const simRes = await api.simulateStkConfirm(createdApp.id, phone.trim() || '254712345678');
-                          setPaymentConfirmed(true);
-                          setPaymentReceipt(simRes.receipt);
-                          if (simRes.application) setCreatedApp(simRes.application);
-                          setTimeout(() => setStep(3), 600);
-                        } catch (err: any) {
-                          setErrorMsg(err.message || 'Simulation failed');
-                        } finally {
-                          setPaymentLoading(false);
-                        }
-                      }}
-                      className="text-[11px] text-slate-400 hover:text-emerald-400 font-mono transition-colors flex items-center gap-1.5 py-1 px-3 rounded-lg hover:bg-slate-800/60"
-                    >
-                      <span>⚡ Instant Test Sandbox: Auto-Authorize & Unlock</span>
-                    </button>
+                    <ul className="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                      <li>Payment is exclusively authenticated via direct Safaricom M-Pesa STK Prompt.</li>
+                      <li>Transactions with insufficient amount, wrong PIN, or expired timers are automatically marked as failed.</li>
+                      <li>Upon successful PIN entry, your application is immediately confirmed by PayHero.</li>
+                    </ul>
                   </div>
                 </div>
               </div>

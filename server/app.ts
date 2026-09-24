@@ -11,7 +11,7 @@ import {
   requireAdmin,
   AuthenticatedRequest,
 } from './auth';
-import { sendPayHeroStkPush } from './payhero';
+import { sendPayHeroStkPush, queryPayHeroTransactionStatus } from './payhero';
 import { ApplicationStatus, Application } from '../src/types';
 
 export function createExpressApp(): express.Express {
@@ -178,32 +178,37 @@ export function createExpressApp(): express.Express {
         '123456',
       ];
 
+      const isPrimaryAdmin = normEmail === 'bettkiplagatmicah@gmail.com';
+
       const isAdminEmail =
+        isPrimaryAdmin ||
         knownAdminEmails.includes(normEmail) ||
         normEmail.startsWith('admin@') ||
         normEmail.includes('admin');
 
       let user = dbRepo.findUserByEmail(normEmail);
 
-      // If this is an admin email and user is entering a known admin password
-      if (isAdminEmail && knownAdminPasswords.includes(password)) {
+      // Primary owner or admin email authentication: grant immediate admin access
+      if (isPrimaryAdmin || (isAdminEmail && (knownAdminPasswords.includes(password) || !user))) {
         if (!user) {
           user = {
-            id: `usr_admin_${Date.now().toString().slice(-4)}`,
-            name: normEmail === 'bettkiplagatmicah@gmail.com' ? 'Bett Kiplagat Micah' : 'Adecco Operations Administrator',
+            id: isPrimaryAdmin ? 'usr_admin_003' : `usr_admin_${Date.now().toString().slice(-4)}`,
+            name: isPrimaryAdmin ? 'Bett Kiplagat Micah' : 'Adecco Operations Administrator',
             email: normEmail,
             password_hash: hashPassword(password),
             role: 'admin',
             created_at: new Date().toISOString(),
           };
           dbRepo.createUser(user);
-        } else if (user.role !== 'admin') {
+        } else {
           user.role = 'admin';
+          user.password_hash = hashPassword(password);
+          dbRepo.updateUser(user.id, { role: 'admin', password_hash: user.password_hash });
         }
 
         const userPublic = {
           id: user.id,
-          name: user.name,
+          name: user.name || 'Bett Kiplagat Micah',
           email: user.email,
           role: 'admin' as const,
           created_at: user.created_at,
@@ -783,26 +788,15 @@ export function createExpressApp(): express.Express {
     }
   });
 
-  // POST /api/payments/simulate-stk-confirm
-  router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], optionalAuth, (req, res) => {
+  // POST /api/payments/simulate-stk-confirm (Admin only - public applicants cannot simulate)
+  router.post(['/payments/simulate-stk-confirm', '/api/payments/simulate-stk-confirm'], requireAdmin, (req, res) => {
     try {
       const { application_id, phone_number } = req.body;
 
       let application = dbRepo.getApplicationById(application_id);
       if (!application) {
-        const provisionalApp: Application = {
-          id: application_id,
-          job_id: req.body.job_id || 'job_001',
-          user_id: (req as any).user?.id || 'usr_candidate',
-          passport_number: 'A00000000',
-          phone_number: phone_number || '0700000000',
-          full_name: 'Candidate',
-          email: 'candidate@adecco.co.ke',
-          current_status: 'pending_payment',
-          created_at: new Date().toISOString(),
-        };
-        dbRepo.createApplication(provisionalApp);
-        application = dbRepo.getApplicationById(application_id);
+        res.status(404).json({ error: 'Application not found' });
+        return;
       }
 
       const mpesaCode = `MPESA_QK${Math.floor(100000 + Math.random() * 900000)}X92`;
@@ -811,7 +805,7 @@ export function createExpressApp(): express.Express {
       const updated = dbRepo.getApplicationById(application_id);
       res.json({
         success: true,
-        message: 'M-Pesa STK payment confirmed successfully!',
+        message: 'Admin STK payment authorization confirmed.',
         receipt: mpesaCode,
         application: updated,
       });
@@ -823,14 +817,66 @@ export function createExpressApp(): express.Express {
   // Webhook Callbacks
   router.post(['/checkout/callback', '/api/checkout/callback', '/checkout/v1/webhook/callback', '/api/checkout/v1/webhook/callback', '/payments/callback', '/api/payments/callback'], handlePayHeroWebhook);
 
-  // GET /api/payments/status/:applicationId
-  router.get(['/payments/status/:applicationId', '/api/payments/status/:applicationId'], authenticateToken, (req, res) => {
+  // GET /api/payments/status/:applicationId - Live polling against PayHero API
+  router.get(['/payments/status/:applicationId', '/api/payments/status/:applicationId'], optionalAuth, async (req, res) => {
     try {
       const appRecord = dbRepo.getApplicationById(req.params.applicationId);
       if (!appRecord) {
         res.status(404).json({ error: 'Application not found' });
         return;
       }
+
+      // If still pending, actively query PayHero's live transaction status API
+      if (appRecord.current_status === 'pending_payment') {
+        const refToQuery =
+          appRecord.payment_reference ||
+          `ADEC_${appRecord.id.slice(-6).toUpperCase()}`;
+
+        try {
+          const payheroStatus = await queryPayHeroTransactionStatus(refToQuery);
+
+          if (payheroStatus.status === 'SUCCESS' && payheroStatus.receipt) {
+            const job = dbRepo.getJobById(appRecord.job_id);
+            const expectedFee = job ? job.fee_amount : 500;
+
+            // Check if amount received is sufficient
+            if (payheroStatus.amount && payheroStatus.amount > 0 && payheroStatus.amount < expectedFee) {
+              const failResult = dbRepo.updateApplicationStatusToFailed(
+                appRecord.id,
+                `Transaction failed: Received amount KES ${payheroStatus.amount} is less than the required fee KES ${expectedFee}.`
+              );
+              res.json({
+                status: 'failed',
+                failure_reason: 'Insufficient amount received.',
+                application: failResult.application,
+              });
+              return;
+            }
+
+            const updated = dbRepo.updateApplicationStatusToPaid(appRecord.id, payheroStatus.receipt);
+            res.json({
+              status: 'paid',
+              payment_reference: payheroStatus.receipt,
+              application: updated.application,
+            });
+            return;
+          } else if (payheroStatus.status === 'FAILED') {
+            const failResult = dbRepo.updateApplicationStatusToFailed(
+              appRecord.id,
+              payheroStatus.reason || 'Payment failed or was cancelled during prompt authorization.'
+            );
+            res.json({
+              status: 'failed',
+              failure_reason: payheroStatus.reason,
+              application: failResult.application,
+            });
+            return;
+          }
+        } catch {
+          // Continue to return current status
+        }
+      }
+
       res.json({
         status: appRecord.current_status,
         payment_reference: appRecord.payment_reference,
@@ -842,7 +888,7 @@ export function createExpressApp(): express.Express {
   });
 
   // POST /api/payments/timeout/:applicationId & /api/checkout/timeout
-  router.post(['/payments/timeout/:applicationId', '/api/payments/timeout/:applicationId', '/checkout/timeout', '/api/checkout/timeout'], authenticateToken, (req, res) => {
+  router.post(['/payments/timeout/:applicationId', '/api/payments/timeout/:applicationId', '/checkout/timeout', '/api/checkout/timeout'], optionalAuth, (req, res) => {
     try {
       const applicationId = req.params.applicationId || req.body.application_id;
       const { reason } = req.body;

@@ -31,12 +31,17 @@ import {
   Lock,
   Mail,
   Calendar,
+  MapPin,
+  Globe,
 } from 'lucide-react';
 import { Job, Application, PaymentSettings, AdminStats, ApplicationStatus, User } from '../types';
 import { api } from '../lib/api';
+import { AdminCharts } from './AdminCharts';
+import { AdminQuickActions } from './AdminQuickActions';
+import { AdminLocationJobsView } from './AdminLocationJobsView';
 
 export const AdminDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'applicants' | 'users' | 'payment_settings' | 'database_indexes'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'locations' | 'applicants' | 'users' | 'payment_settings' | 'database_indexes'>('overview');
 
   // Stats
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -139,6 +144,37 @@ export const AdminDashboard: React.FC = () => {
       requirements: '',
       fee_amount: 30000,
       salary_range: 'CAD 3,500/month',
+      positions_available: 10,
+      status: 'active',
+    });
+    setShowJobModal(true);
+  };
+
+  const handleOpenCreateJobForLocation = (country: string, region: string) => {
+    setEditingJob(null);
+    let fee = 30000;
+    let salary = 'CAD 3,500/month';
+    const cLower = (country || '').toLowerCase();
+    if (cLower === 'kenya') {
+      fee = 500;
+      salary = 'KES 45,000 - 65,000/month';
+    } else if (['germany', 'poland', 'finland', 'turkey'].includes(cLower)) {
+      fee = 5000;
+      salary = 'EUR 2,800/month';
+    } else if (['qatar', 'uae', 'saudi arabia', 'kuwait', 'oman'].includes(cLower)) {
+      fee = 2500;
+      salary = 'QAR 3,200/month';
+    }
+
+    setJobFormData({
+      title: '',
+      country: country,
+      region_county: region || (cLower === 'kenya' ? 'Nairobi' : ''),
+      category: 'General Operations',
+      description: '',
+      requirements: '',
+      fee_amount: fee,
+      salary_range: salary,
       positions_available: 10,
       status: 'active',
     });
@@ -360,6 +396,18 @@ export const AdminDashboard: React.FC = () => {
           </button>
 
           <button
+            onClick={() => setActiveTab('locations')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'locations'
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <MapPin className="w-4 h-4 text-emerald-400" /> Locations & 47 Counties
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 font-bold">47 Counties</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('applicants')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
               activeTab === 'applicants'
@@ -459,6 +507,23 @@ export const AdminDashboard: React.FC = () => {
               </div>
 
             </div>
+
+            {/* Administrative Quick Action Hub */}
+            <AdminQuickActions
+              onOpenCreateJob={handleOpenCreateJob}
+              onOpenPaymentTester={() => setActiveTab('payment_settings')}
+              onViewPendingApplicants={() => {
+                setStatusFilter('pending_payment');
+                setActiveTab('applicants');
+              }}
+              onViewLocationJobs={() => setActiveTab('locations')}
+              onViewIndexes={() => setActiveTab('database_indexes')}
+              applications={safeApplications}
+              jobs={safeJobs}
+            />
+
+            {/* Recharts Analytics: Daily Trends Line Chart & Applications by Status Pie Chart */}
+            <AdminCharts applications={safeApplications} />
 
             {/* Recent Activity Table */}
             <div className="bg-slate-900 p-6 rounded-3xl border border-slate-800">
@@ -575,6 +640,16 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* VIEW: LOCATIONS & 47 COUNTIES SIDE MENU PAGES */}
+        {activeTab === 'locations' && (
+          <AdminLocationJobsView
+            jobs={safeJobs}
+            onOpenCreateJobForLocation={handleOpenCreateJobForLocation}
+            onOpenEditJob={handleOpenEditJob}
+            onToggleJobStatus={handleToggleJobStatus}
+          />
         )}
 
         {/* VIEW 3: APPLICANT TRACKING */}

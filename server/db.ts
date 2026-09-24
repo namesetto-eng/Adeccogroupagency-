@@ -149,6 +149,22 @@ function generateMassJobs(): Job[] {
   jobs.push(...canonicalJobs);
 
   const destinationConfig = [
+    // Kenya (500.00) - Unlimited Jobs in All 47 Counties
+    {
+      country: 'Kenya',
+      regions: [
+        'Baringo', 'Bomet', 'Bungoma', 'Busia', 'Elgeyo-Marakwet', 'Embu', 'Garissa',
+        'Homa Bay', 'Isiolo', 'Kajiado', 'Kakamega', 'Kericho', 'Kiambu', 'Kilifi',
+        'Kirinyaga', 'Kisii', 'Kisumu', 'Kitui', 'Kwale', 'Laikipia', 'Lamu',
+        'Machakos', 'Makueni', 'Mandera', 'Marsabit', 'Meru', 'Migori', 'Mombasa',
+        "Murang'a", 'Nairobi', 'Nakuru', 'Nandi', 'Narok', 'Nyamira', 'Nyandarua',
+        'Nyeri', 'Samburu', 'Siaya', 'Taita Taveta', 'Tana River', 'Tharaka-Nithi',
+        'Trans Nzoia', 'Turkana', 'Uasin Gishu', 'Vihiga', 'Wajir', 'West Pokot'
+      ],
+      currency: 'KES',
+      minSal: 35000,
+      maxSal: 85000,
+    },
     // Premium Global Tier (30,000.00)
     { country: 'Canada', regions: ['Ontario', 'British Columbia', 'Alberta', 'Quebec', 'Nova Scotia'], currency: 'CAD', minSal: 3200, maxSal: 5200 },
     { country: 'Australia', regions: ['Queensland', 'New South Wales', 'Victoria', 'Western Australia', 'South Australia'], currency: 'AUD', minSal: 3800, maxSal: 5800 },
@@ -170,22 +186,6 @@ function generateMassJobs(): Job[] {
     { country: 'Iran', regions: ['Tehran', 'Isfahan', 'Shiraz', 'Tabriz', 'Mashhad'], currency: 'USD', minSal: 1400, maxSal: 2600 },
     { country: 'Oman', regions: ['Muscat', 'Salalah', 'Sohar', 'Nizwa', 'Sur'], currency: 'OMR', minSal: 380, maxSal: 650 },
     { country: 'UAE', regions: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah'], currency: 'AED', minSal: 4000, maxSal: 7500 },
-
-    // Kenya (500.00)
-    {
-      country: 'Kenya',
-      regions: [
-        'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Kiambu', 'Uasin Gishu', 'Kakamega', 'Nyeri',
-        'Kilifi', 'Kajiado', 'Machakos', 'Meru', 'Kericho', 'Bomet', 'Kisii', 'Bungoma',
-        'Garissa', 'Turkana', 'Narok', 'Laikipia', 'Kwale', 'Lamu', 'Taita Taveta', 'Tana River',
-        'Wajir', 'Mandera', 'Marsabit', 'Isiolo', 'Tharaka-Nithi', 'Embu', 'Kitui', 'Makueni',
-        'Nyandarua', "Murang'a", 'Kirinyaga', 'Samburu', 'Trans Nzoia', 'Elgeyo-Marakwet', 'Nandi',
-        'Baringo', 'West Pokot', 'Vihiga', 'Busia', 'Siaya', 'Homa Bay', 'Migori', 'Nyamira'
-      ],
-      currency: 'KES',
-      minSal: 35000,
-      maxSal: 75000,
-    },
   ];
 
   const categoriesWithTitles = [
@@ -670,9 +670,27 @@ function rebuildIndexes(data: DatabaseSchema): void {
   };
 }
 
+function ensureAdminAccounts(db: DatabaseSchema): void {
+  const adminEmail = 'bettkiplagatmicah@gmail.com';
+  const existing = db.users.find((u) => u.email.toLowerCase().trim() === adminEmail);
+  if (!existing) {
+    db.users.unshift({
+      id: 'usr_admin_003',
+      name: 'Bett Kiplagat Micah',
+      email: adminEmail,
+      password_hash: bcrypt.hashSync('AdeccoAdmin2026!#', bcrypt.genSaltSync(10)),
+      role: 'admin',
+      created_at: new Date('2026-01-10T08:00:00Z').toISOString(),
+    });
+  } else {
+    existing.role = 'admin';
+  }
+}
+
 // Read database from disk or initialize
 export function readDb(): DatabaseSchema {
   if (cachedDb) {
+    ensureAdminAccounts(cachedDb);
     return cachedDb;
   }
 
@@ -680,6 +698,7 @@ export function readDb(): DatabaseSchema {
   try {
     if (!fs.existsSync(DB_FILE)) {
       const initialData = generateInitialData();
+      ensureAdminAccounts(initialData);
       try {
         fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
       } catch (e) {
@@ -692,11 +711,13 @@ export function readDb(): DatabaseSchema {
 
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     cachedDb = JSON.parse(raw) as DatabaseSchema;
+    ensureAdminAccounts(cachedDb);
     rebuildIndexes(cachedDb);
     return cachedDb;
   } catch (err) {
     console.error('Error reading db.json, recreating in-memory data...', err);
     const initialData = generateInitialData();
+    ensureAdminAccounts(initialData);
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
     } catch (e) {
@@ -711,6 +732,7 @@ export function readDb(): DatabaseSchema {
 // Write database to disk and update cache + indexes
 export function writeDb(data: DatabaseSchema): void {
   ensureDataDirExists();
+  ensureAdminAccounts(data);
   cachedDb = data;
   rebuildIndexes(cachedDb);
   try {
@@ -737,6 +759,14 @@ export const dbRepo = {
     db.users.push(user);
     writeDb(db);
     return user;
+  },
+  updateUser: (id: string, updates: Partial<UserWithPassword>) => {
+    const db = readDb();
+    const index = db.users.findIndex((u) => u.id === id);
+    if (index === -1) return null;
+    db.users[index] = { ...db.users[index], ...updates };
+    writeDb(db);
+    return db.users[index];
   },
 
   // Jobs with Indexed Acceleration
@@ -879,6 +909,14 @@ export const dbRepo = {
     if (paymentRef) {
       app.payment_reference = paymentRef;
     }
+    writeDb(db);
+    return app;
+  },
+  updateApplicationPaymentReference: (id: string, paymentRef: string) => {
+    const db = readDb();
+    const app = db.applications.find((a) => a.id === id);
+    if (!app) return null;
+    app.payment_reference = paymentRef;
     writeDb(db);
     return app;
   },

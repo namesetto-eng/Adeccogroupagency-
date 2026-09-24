@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Globe, ShieldCheck, Zap, Award, MapPin, Building2, Smartphone, Loader2, X, Briefcase, Sparkles, ArrowRight } from 'lucide-react';
 import { Job } from '../types';
+import { KENYA_COUNTIES } from '../data/jobData';
 
 interface HeroSectionProps {
   searchQuery: string;
@@ -381,21 +382,41 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               </div>
             </div>
 
-            {/* County / Region Text Input */}
+            {/* County / Region Selection */}
             <div className="md:col-span-2">
-              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1">
-                County / Region
+              <label className="block text-[10px] uppercase font-bold text-gray-400 tracking-wider mb-1 flex items-center justify-between">
+                <span>{selectedCountry === 'Kenya' ? 'Kenyan County' : 'County / Region'}</span>
+                {selectedCountry === 'Kenya' && (
+                  <span className="text-[9px] text-[#E30613] font-semibold">47 Counties</span>
+                )}
               </label>
               <div className="relative">
                 <MapPin className="w-4 h-4 text-gray-400 absolute left-3 top-3 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="e.g. Nairobi, London..."
-                  value={selectedRegionCounty || ''}
-                  onChange={(e) => setSelectedRegionCounty?.(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && onSearchClick()}
-                  className="w-full bg-[#050505] border border-[#222] text-white text-sm rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-[#E30613] focus:ring-1 focus:ring-[#E30613]"
-                />
+                {selectedCountry === 'Kenya' ? (
+                  <select
+                    value={selectedRegionCounty || ''}
+                    onChange={(e) => {
+                      setSelectedRegionCounty?.(e.target.value);
+                    }}
+                    className="w-full bg-[#050505] border border-[#222] text-white text-sm rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-[#E30613] focus:ring-1 focus:ring-[#E30613] appearance-none cursor-pointer"
+                  >
+                    <option value="">All 47 Counties</option>
+                    {KENYA_COUNTIES.map((county) => (
+                      <option key={county} value={county}>
+                        {county} County
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="e.g. Nairobi, London..."
+                    value={selectedRegionCounty || ''}
+                    onChange={(e) => setSelectedRegionCounty?.(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && onSearchClick()}
+                    className="w-full bg-[#050505] border border-[#222] text-white text-sm rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-[#E30613] focus:ring-1 focus:ring-[#E30613]"
+                  />
+                )}
               </div>
             </div>
 
@@ -422,25 +443,61 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
           </div>
 
-          {/* Quick Filter Country Chips */}
+          {/* Quick Filter Country / County Chips */}
           <div className="mt-4 pt-3 border-t border-[#1a1a1a] flex flex-wrap items-center gap-2">
             <span className="text-xs text-gray-400 font-semibold flex items-center gap-1 mr-1">
-              <MapPin className="w-3.5 h-3.5 text-[#E30613]" /> Popular Destinations:
+              <MapPin className="w-3.5 h-3.5 text-[#E30613]" />{' '}
+              {selectedCountry === 'Kenya' ? 'Popular Counties:' : 'Popular Destinations:'}
             </span>
-            {countries.slice(1).map((c) => (
-              <button
-                key={c.id}
-                onClick={() => setSelectedCountry(c.id)}
-                className={`text-xs px-3 py-1 rounded transition-all flex items-center gap-1.5 ${
-                  selectedCountry === c.id
-                    ? 'bg-[#E30613] text-white font-bold shadow-md shadow-[#E30613]/20'
-                    : 'bg-[#050505] text-gray-300 border border-[#222] hover:bg-[#111]'
-                }`}
-              >
-                <span>{c.flag}</span>
-                <span>{c.name}</span>
-              </button>
-            ))}
+            {selectedCountry === 'Kenya' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRegionCounty?.('')}
+                  className={`text-xs px-3 py-1 rounded transition-all ${
+                    !selectedRegionCounty
+                      ? 'bg-[#E30613] text-white font-bold shadow-md shadow-[#E30613]/20'
+                      : 'bg-[#050505] text-gray-300 border border-[#222] hover:bg-[#111]'
+                  }`}
+                >
+                  All 47 Counties
+                </button>
+                {['Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Kiambu', 'Uasin Gishu', 'Machakos', 'Meru', 'Kericho', 'Kilifi', 'Kakamega'].map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setSelectedRegionCounty?.(c)}
+                    className={`text-xs px-3 py-1 rounded transition-all ${
+                      selectedRegionCounty === c
+                        ? 'bg-[#E30613] text-white font-bold shadow-md shadow-[#E30613]/20'
+                        : 'bg-[#050505] text-gray-300 border border-[#222] hover:bg-[#111]'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </>
+            ) : (
+              countries.slice(1).map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedCountry(c.id);
+                    if (c.id === 'Kenya') {
+                      setSelectedRegionCounty?.('');
+                    }
+                  }}
+                  className={`text-xs px-3 py-1 rounded transition-all flex items-center gap-1.5 ${
+                    selectedCountry === c.id
+                      ? 'bg-[#E30613] text-white font-bold shadow-md shadow-[#E30613]/20'
+                      : 'bg-[#050505] text-gray-300 border border-[#222] hover:bg-[#111]'
+                  }`}
+                >
+                  <span>{c.flag}</span>
+                  <span>{c.name}</span>
+                </button>
+              ))
+            )}
           </div>
         </div>
 

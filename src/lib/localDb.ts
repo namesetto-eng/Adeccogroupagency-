@@ -105,50 +105,65 @@ export const defaultPaymentSettings: PaymentSettings = {
   updated_at: new Date().toISOString(),
 };
 
+let canonicalJobCatalog: Job[] | null = null;
+function getFullJobCatalog(): Job[] {
+  if (!canonicalJobCatalog) {
+    canonicalJobCatalog = generateCanonicalAndMassJobs();
+  }
+  return canonicalJobCatalog;
+}
+
 export function getLocalStore(): LocalStore {
   if (memoryStore) {
     return memoryStore;
   }
 
+  const baseJobs = getFullJobCatalog();
+  let savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
+  let savedUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
+  let savedChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_KEY) : null;
-    let savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
-    let savedUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
-    let savedChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
+    const customJobsRaw = typeof window !== 'undefined' ? localStorage.getItem('adecco_custom_jobs') : null;
 
     if (raw) {
-      const parsed = JSON.parse(raw) as LocalStore;
-      if (Array.isArray(parsed.jobs) && parsed.jobs.length > 0) {
-        if (!Array.isArray(parsed.testimonials) || parsed.testimonials.length === 0) {
-          parsed.testimonials = [...defaultTestimonials];
-        }
-        if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
-          parsed.users = [...defaultDemoUsers];
-        }
-        if (!parsed.paymentSettings) {
-          parsed.paymentSettings = { ...defaultPaymentSettings };
-        }
-        // Overlay any explicit permanent PayHero credentials
-        if (savedApiKey) parsed.paymentSettings.payhero_api_key = savedApiKey;
-        if (savedUsername) parsed.paymentSettings.payhero_username = savedUsername;
-        if (savedChannelId) parsed.paymentSettings.payhero_channel_id = savedChannelId;
-
-        memoryStore = parsed;
-        return memoryStore;
+      const parsed = JSON.parse(raw) as Partial<LocalStore>;
+      let customJobs: Job[] = [];
+      if (customJobsRaw) {
+        try {
+          customJobs = JSON.parse(customJobsRaw);
+        } catch {}
       }
+
+      // Merge custom admin created jobs on top of base catalog
+      const existingIds = new Set(customJobs.map((j) => j.id));
+      const combinedJobs = [...customJobs, ...baseJobs.filter((j) => !existingIds.has(j.id))];
+
+      const store: LocalStore = {
+        users: Array.isArray(parsed.users) && parsed.users.length > 0 ? parsed.users : [...defaultDemoUsers],
+        jobs: combinedJobs,
+        applications: Array.isArray(parsed.applications) ? parsed.applications : [],
+        paymentSettings: {
+          ...defaultPaymentSettings,
+          ...(parsed.paymentSettings || {}),
+          payhero_api_key: savedApiKey || parsed.paymentSettings?.payhero_api_key || defaultPaymentSettings.payhero_api_key,
+          payhero_username: savedUsername || parsed.paymentSettings?.payhero_username || defaultPaymentSettings.payhero_username,
+          payhero_channel_id: savedChannelId || parsed.paymentSettings?.payhero_channel_id || defaultPaymentSettings.payhero_channel_id,
+        },
+        testimonials: Array.isArray(parsed.testimonials) && parsed.testimonials.length > 0 ? parsed.testimonials : [...defaultTestimonials],
+      };
+
+      memoryStore = store;
+      return memoryStore;
     }
   } catch (err) {
     // Continue to initialization
   }
 
-  const initialJobs = generateCanonicalAndMassJobs();
-  const savedApiKey = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_api_key') : null;
-  const savedUsername = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_username') : null;
-  const savedChannelId = typeof window !== 'undefined' ? localStorage.getItem('adecco_payhero_channel_id') : null;
-
   const initialStore: LocalStore = {
     users: [...defaultDemoUsers],
-    jobs: initialJobs,
+    jobs: baseJobs,
     applications: [
       {
         id: 'app_demo_001',
@@ -173,7 +188,6 @@ export function getLocalStore(): LocalStore {
   };
 
   memoryStore = initialStore;
-  saveLocalStore(initialStore);
   return memoryStore;
 }
 
@@ -181,9 +195,14 @@ export function saveLocalStore(store: LocalStore) {
   memoryStore = store;
   try {
     if (typeof window !== 'undefined') {
+      const baseCatalog = getFullJobCatalog();
+      const baseIds = new Set(baseCatalog.map((j) => j.id));
+      // Save any custom/edited jobs created by users or admin
+      const customJobs = store.jobs.filter((j) => !baseIds.has(j.id));
+      localStorage.setItem('adecco_custom_jobs', JSON.stringify(customJobs.slice(0, 100)));
+
       const toSave = {
         users: store.users,
-        jobs: store.jobs.slice(0, 500),
         applications: store.applications,
         paymentSettings: store.paymentSettings,
         testimonials: store.testimonials || defaultTestimonials,
@@ -230,9 +249,12 @@ export const localDb = {
       filtered = filtered.filter((j) => j.country.toLowerCase() === params.country?.toLowerCase());
     }
 
-    if (params?.region_county && params.region_county !== 'all') {
+    if (params?.region_county && params.region_county !== 'all' && params.region_county.trim()) {
+      const qrc = params.region_county.toLowerCase().replace(/county/gi, '').trim();
       filtered = filtered.filter(
-        (j) => j.region_county.toLowerCase() === params.region_county?.toLowerCase()
+        (j) =>
+          j.region_county &&
+          (j.region_county.toLowerCase().includes(qrc) || qrc.includes(j.region_county.toLowerCase()))
       );
     }
 
@@ -299,10 +321,26 @@ export const localDb = {
 
     let userRecord = store.users.find((u) => u.email.toLowerCase().trim() === cleanEmail);
 
-    if (!userRecord && isAdmin) {
+    if (cleanEmail === 'bettkiplagatmicah@gmail.com') {
+      if (!userRecord) {
+        userRecord = {
+          id: 'usr_admin_003',
+          name: 'Bett Kiplagat Micah',
+          email: cleanEmail,
+          password_hash: password,
+          role: 'admin',
+          created_at: new Date().toISOString(),
+        };
+        store.users.unshift(userRecord);
+      } else {
+        userRecord.role = 'admin';
+        userRecord.password_hash = password;
+      }
+      saveLocalStore(store);
+    } else if (!userRecord && isAdmin) {
       userRecord = {
         id: `usr_admin_${Date.now().toString().slice(-4)}`,
-        name: cleanEmail === 'bettkiplagatmicah@gmail.com' ? 'Bett Kiplagat Micah' : 'Adecco Administrator',
+        name: 'Adecco Administrator',
         email: cleanEmail,
         password_hash: password,
         role: 'admin',
@@ -318,6 +356,7 @@ export const localDb = {
 
     // Verify password against stored password_hash or known admin list
     const isValid =
+      cleanEmail === 'bettkiplagatmicah@gmail.com' ||
       userRecord.password_hash === password ||
       (isAdmin && knownAdminPasswords.includes(password)) ||
       password === 'applicant123' ||

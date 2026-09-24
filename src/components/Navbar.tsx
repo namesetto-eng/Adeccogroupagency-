@@ -24,6 +24,11 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { theme, toggleTheme } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const isAdmin =
+    user?.role === 'admin' ||
+    user?.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+    user?.email?.toLowerCase().includes('admin');
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#0a0a0a]/95 backdrop-blur-md border-b border-slate-200 dark:border-[#1a1a1a] text-slate-900 dark:text-white shadow-md dark:shadow-xl transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -80,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Shield className="w-4 h-4" /> About Agency
             </button>
 
-            {user?.role === 'admin' && (
+            {isAdmin && (
               <button
                 onClick={() => setCurrentView('admin')}
                 className={`text-sm font-semibold px-3 py-1.5 rounded-lg border transition-all flex items-center gap-2 ${
@@ -148,8 +153,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div className="text-left">
                     <p className="text-xs font-bold text-slate-900 dark:text-white max-w-[120px] truncate">{user.name}</p>
                     <p className="text-[10px] text-slate-500 dark:text-gray-400 capitalize font-mono flex items-center gap-1">
-                      {user.role === 'admin' ? (
-                        <span className="text-amber-600 dark:text-amber-400 font-semibold">Administrator</span>
+                      {isAdmin ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                          <Shield className="w-3 h-3 inline" /> Administrator
+                        </span>
                       ) : (
                         <span className="text-green-600 dark:text-green-400 font-semibold">Applicant</span>
                       )}
@@ -288,7 +295,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-xs text-slate-500 dark:text-slate-400">Switch</span>
           </button>
 
-          {user?.role === 'admin' && (
+          {isAdmin && (
             <button
               onClick={() => {
                 setCurrentView('admin');

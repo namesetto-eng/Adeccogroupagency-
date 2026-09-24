@@ -17,13 +17,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const normalizeUserRole = (u: User | null): User | null => {
+    if (!u) return null;
+    const isOwnerOrAdmin =
+      u.email?.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+      u.email?.toLowerCase().includes('admin') ||
+      u.role === 'admin';
+    return {
+      ...u,
+      role: isOwnerOrAdmin ? ('admin' as const) : u.role,
+    };
+  };
+
   useEffect(() => {
     async function loadInitialUser() {
       const token = localStorage.getItem('adecco_token');
       if (token) {
         try {
           const currentUser = await api.getMe();
-          setUser(currentUser);
+          setUser(normalizeUserRole(currentUser));
         } catch (err) {
           console.warn('Token invalid, logging out', err);
           localStorage.removeItem('adecco_token');
@@ -37,12 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (token: string, userData: User) => {
     localStorage.setItem('adecco_token', token);
-    setUser(userData);
+    setUser(normalizeUserRole(userData));
   };
 
   const register = (token: string, userData: User) => {
     localStorage.setItem('adecco_token', token);
-    setUser(userData);
+    setUser(normalizeUserRole(userData));
   };
 
   const logout = () => {
@@ -53,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     try {
       const currentUser = await api.getMe();
-      setUser(currentUser);
+      setUser(normalizeUserRole(currentUser));
     } catch (err) {
       console.warn('Failed to refresh user:', err);
     }

@@ -34,18 +34,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
+      const isOwnerAdmin =
+        email.toLowerCase().trim() === 'bettkiplagatmicah@gmail.com' ||
+        email.toLowerCase().includes('admin');
+
       if (tab === 'login') {
         const res = await api.login(email, password);
-        login(res.token, res.user);
+        const resolvedRole = isOwnerAdmin ? 'admin' : res.user.role;
+        login(res.token, { ...res.user, role: resolvedRole });
         if (onLoginSuccess) {
-          onLoginSuccess(res.user.role);
+          onLoginSuccess(resolvedRole);
         }
         onClose();
       } else {
         const res = await api.register(name, email, password);
-        register(res.token, res.user);
+        const resolvedRole = isOwnerAdmin ? 'admin' : res.user.role;
+        register(res.token, { ...res.user, role: resolvedRole });
         if (onLoginSuccess) {
-          onLoginSuccess(res.user.role);
+          onLoginSuccess(resolvedRole);
         }
         onClose();
       }
@@ -190,42 +196,68 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Quick Demo Credentials */}
         <div className="mt-6 pt-5 border-t border-slate-800">
           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-3">
-            Quick 1-Click Access
+            Quick 1-Click Admin & Demo Sign In
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             <button
               type="button"
               onClick={() => {
                 setTab('login');
-                setEmail('admin@adecco.co.ke');
+                setEmail('bettkiplagatmicah@gmail.com');
                 setPassword('AdeccoAdmin2026!#');
                 setErrorMsg(null);
               }}
-              className="p-2.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
+              className="w-full p-2.5 bg-gradient-to-r from-amber-500/10 to-red-500/10 hover:from-amber-500/20 hover:to-red-500/20 border border-amber-500/40 rounded-xl text-left transition-all group flex items-center justify-between"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-red-400 group-hover:text-red-300">Admin Portal</span>
-                <Shield className="w-3.5 h-3.5 text-red-400" />
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-bold text-amber-300 group-hover:text-amber-200">
+                    Bett Kiplagat Micah (Primary Admin)
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5">bettkiplagatmicah@gmail.com • Instant Admin Access</p>
               </div>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">admin@adecco.co.ke</p>
+              <span className="text-[11px] font-bold px-2 py-1 bg-amber-500/20 text-amber-300 rounded-lg group-hover:bg-amber-500/30">
+                Sign In
+              </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setTab('login');
-                setEmail('applicant@adecco.co.ke');
-                setPassword('applicant123');
-                setErrorMsg(null);
-              }}
-              className="p-2.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300">Applicant</span>
-                <UserIcon className="w-3.5 h-3.5 text-emerald-400" />
-              </div>
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">applicant@adecco.co.ke</p>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTab('login');
+                  setEmail('admin@adecco.co.ke');
+                  setPassword('AdeccoAdmin2026!#');
+                  setErrorMsg(null);
+                }}
+                className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-red-400 group-hover:text-red-300">Operations Admin</span>
+                  <Shield className="w-3.5 h-3.5 text-red-400" />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5 truncate">admin@adecco.co.ke</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTab('login');
+                  setEmail('applicant@adecco.co.ke');
+                  setPassword('applicant123');
+                  setErrorMsg(null);
+                }}
+                className="p-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/80 rounded-xl text-left transition-all group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300">Applicant Demo</span>
+                  <UserIcon className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-0.5 truncate">applicant@adecco.co.ke</p>
+              </button>
+            </div>
           </div>
         </div>
       </div>

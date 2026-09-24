@@ -324,47 +324,32 @@ export const api = {
     // Validate phone number digits
     const cleanedDigits = (phone_number || '').replace(/\D/g, '');
     if (!cleanedDigits || cleanedDigits.length < 9) {
-      throw new Error('Please enter a valid 10-digit Kenyan M-Pesa phone number (e.g. 0712345678 or 0143115691).');
+      throw new Error('Please enter a valid 10-digit Kenyan Safaricom phone number (e.g. 0712345678 or 0143115691).');
     }
 
-    try {
-      const data = await safeFetchJson<StkPushResponse>(`${API_BASE}/api/payments/stk-push`, {
-        method: 'POST',
-        headers: getHeaders(),
-        body: JSON.stringify({
-          application_id,
-          phone_number,
-          amount: extra?.amount,
-          fee_amount: extra?.fee_amount,
-          job_id: extra?.job_id,
-          passport_number: extra?.passport_number,
-          full_name: extra?.full_name,
-          email: extra?.email,
-          payhero_api_key: payheroApiKey || undefined,
-          payhero_username: payheroUsername || undefined,
-          payhero_channel_id: payheroChannelId || undefined,
-        }),
-      });
-      return data;
-    } catch (err: any) {
-      console.warn('STK push API notice / fallback:', err);
-      
-      // If the backend returned a specific user error from PayHero (e.g. invalid phone number format or explicit PayHero rejection), surface it
-      if (err.message && !err.message.includes('ENDPOINT_OFFLINE') && !err.message.includes('JSON_PARSE_ERROR') && !err.message.includes('Failed to fetch') && !err.message.includes('NetworkError')) {
-        if (err.message.includes('M-Pesa phone number') || err.message.includes('PayHero STK Error') || err.message.includes('Unauthorized') || err.message.includes('insufficient')) {
-          throw err;
-        }
-      }
+    const data = await safeFetchJson<StkPushResponse>(`${API_BASE}/api/payments/stk-push`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        application_id,
+        phone_number,
+        amount: extra?.amount,
+        fee_amount: extra?.fee_amount,
+        job_id: extra?.job_id,
+        passport_number: extra?.passport_number,
+        full_name: extra?.full_name,
+        email: extra?.email,
+        payhero_api_key: payheroApiKey || undefined,
+        payhero_username: payheroUsername || undefined,
+        payhero_channel_id: payheroChannelId || undefined,
+      }),
+    });
 
-      // Seamless fallback response for static Vercel deployments and offline serverless states
-      const ref = `ADEC_${application_id.slice(-6).toUpperCase()}`;
-      return {
-        success: true,
-        message: `M-Pesa STK Prompt dispatched to ${phone_number}. Please enter your M-Pesa PIN on your phone to complete payment.`,
-        reference: ref,
-        status: 'pending',
-      };
+    if (!data || data.success === false) {
+      throw new Error(data?.error || data?.message || 'PayHero failed to initiate STK push prompt.');
     }
+
+    return data;
   },
 
   async simulateStkConfirm(application_id: string, phone_number: string) {

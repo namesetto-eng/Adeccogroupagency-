@@ -87,6 +87,7 @@ export interface StkPushResponse {
   checkout_id?: string;
   status?: string;
   reference?: string;
+  error?: string;
 }
 
 export interface AdminStats {

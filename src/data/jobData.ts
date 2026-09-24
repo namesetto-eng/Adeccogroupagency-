@@ -1,5 +1,17 @@
 import { Job, User, Application, PaymentSettings, GatewayCredentials, Testimonial } from '../types';
 
+export const KENYA_COUNTIES = [
+  'Baringo', 'Bomet', 'Bungoma', 'Busia', 'Elgeyo-Marakwet', 'Embu', 'Garissa',
+  'Homa Bay', 'Isiolo', 'Kajiado', 'Kakamega', 'Kericho', 'Kiambu', 'Kilifi',
+  'Kirinyaga', 'Kisii', 'Kisumu', 'Kitui', 'Kwale', 'Laikipia', 'Lamu',
+  'Machakos', 'Makueni', 'Mandera', 'Marsabit', 'Meru', 'Migori', 'Mombasa',
+  "Murang'a", 'Nairobi', 'Nakuru', 'Nandi', 'Narok', 'Nyamira', 'Nyandarua',
+  'Nyeri', 'Samburu', 'Siaya', 'Taita Taveta', 'Tana River', 'Tharaka-Nithi',
+  'Trans Nzoia', 'Turkana', 'Uasin Gishu', 'Vihiga', 'Wajir', 'West Pokot'
+] as const;
+
+export type KenyaCounty = typeof KENYA_COUNTIES[number];
+
 export function getFeeForCountry(country: string): number {
   if (['Canada', 'Australia', 'Singapore', 'Kuwait', 'UK', 'USA'].includes(country)) {
     return 30000.0;
@@ -137,6 +149,13 @@ export function generateCanonicalAndMassJobs(): Job[] {
   jobs.push(...canonicalJobs);
 
   const destinationConfig = [
+    {
+      country: 'Kenya',
+      regions: [...KENYA_COUNTIES],
+      currency: 'KES',
+      minSal: 35000,
+      maxSal: 85000,
+    },
     { country: 'Canada', regions: ['Ontario', 'British Columbia', 'Alberta', 'Quebec', 'Nova Scotia'], currency: 'CAD', minSal: 3200, maxSal: 5200 },
     { country: 'Australia', regions: ['Queensland', 'New South Wales', 'Victoria', 'Western Australia', 'South Australia'], currency: 'AUD', minSal: 3800, maxSal: 5800 },
     { country: 'Singapore', regions: ['Central Region', 'Jurong East', 'Changi', 'Woodlands', 'Tampines'], currency: 'SGD', minSal: 2800, maxSal: 4200 },
@@ -153,20 +172,6 @@ export function generateCanonicalAndMassJobs(): Job[] {
     { country: 'Iran', regions: ['Tehran', 'Isfahan', 'Shiraz', 'Tabriz', 'Mashhad'], currency: 'USD', minSal: 1400, maxSal: 2600 },
     { country: 'Oman', regions: ['Muscat', 'Salalah', 'Sohar', 'Nizwa', 'Sur'], currency: 'OMR', minSal: 380, maxSal: 650 },
     { country: 'UAE', regions: ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman', 'Ras Al Khaimah'], currency: 'AED', minSal: 4000, maxSal: 7500 },
-    {
-      country: 'Kenya',
-      regions: [
-        'Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Kiambu', 'Uasin Gishu', 'Kakamega', 'Nyeri',
-        'Kilifi', 'Kajiado', 'Machakos', 'Meru', 'Kericho', 'Bomet', 'Kisii', 'Bungoma',
-        'Garissa', 'Turkana', 'Narok', 'Laikipia', 'Kwale', 'Lamu', 'Taita Taveta', 'Tana River',
-        'Wajir', 'Mandera', 'Marsabit', 'Isiolo', 'Tharaka-Nithi', 'Embu', 'Kitui', 'Makueni',
-        'Nyandarua', "Murang'a", 'Kirinyaga', 'Samburu', 'Trans Nzoia', 'Elgeyo-Marakwet', 'Nandi',
-        'Baringo', 'West Pokot', 'Vihiga', 'Busia', 'Siaya', 'Homa Bay', 'Migori', 'Nyamira',
-      ],
-      currency: 'KES',
-      minSal: 35000,
-      maxSal: 75000,
-    },
   ];
 
   const categoriesWithTitles = [
@@ -333,14 +338,23 @@ export function generateCanonicalAndMassJobs(): Job[] {
           const daysAgo = (idCounter % 40) + 1;
           const postDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
 
+          const isKenya = dest.country === 'Kenya';
+          const jobTitle = isKenya ? `${title} - ${region} County` : `${title} - ${dest.country} (${region})`;
+          const jobDescription = isKenya
+            ? `${desc} Direct local placement available across ${region} County, Kenya. Immediate onboarding with accredited statutory terms and localized career advancement.`
+            : `${desc} Located in ${region}, ${dest.country}. Adecco Group Agency offers end-to-end relocation guidance, embassy documentation processing, and verified employment placement.`;
+          const jobRequirements = isKenya
+            ? `National ID card, valid certificate of good conduct, relevant vocational background in ${cat.category.toLowerCase()}, and strong work ethic.`
+            : `Valid passport (for overseas roles), medical fitness clearance, relevant basic experience in ${cat.category.toLowerCase()}, and strong work ethic.`;
+
           jobs.push({
             id: `job_${idCounter}`,
-            title: `${title} - ${dest.country}`,
+            title: jobTitle,
             country: dest.country,
             region_county: region,
             category: cat.category,
-            description: `${desc} Located in ${region}, ${dest.country}. Adecco Group Agency offers end-to-end relocation guidance, embassy documentation processing, and verified employment placement.`,
-            requirements: `Valid passport (for overseas roles), medical fitness clearance, relevant basic experience in ${cat.category.toLowerCase()}, and strong work ethic.`,
+            description: jobDescription,
+            requirements: jobRequirements,
             fee_amount: fee,
             status: 'active',
             salary_range: `${dest.currency} ${salMin.toLocaleString()} - ${salMax.toLocaleString()}/month`,
